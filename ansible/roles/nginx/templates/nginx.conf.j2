@@ -1,0 +1,79 @@
+# /etc/nginx/conf.d/sarvavaidya.conf
+# Nginx reverse proxy for SarvaVaidya EHR
+# Managed by Ansible — do not edit manually
+
+upstream api_backend {
+    server 127.0.0.1:3001;
+    keepalive 32;
+}
+
+upstream web_frontend {
+    server 127.0.0.1:4173;   # vite preview (prod static build)
+    keepalive 16;
+}
+
+# ─── Main server block ────────────────────────────────────────────────────────
+server {
+    listen 80;
+    server_name {{ ansible_host }} _;
+
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer-when-downgrade" always;
+
+    # Large file uploads (patient documents)
+    client_max_body_size 50M;
+
+    # ── WebSocket (follow-up calls real-time) ─────────────────────────────────
+    location /ws/ {
+        proxy_pass         http://api_backend;
+        proxy_http_version 1.1;
+        proxy_set_header   Upgrade $http_upgrade;
+        proxy_set_header   Connection "upgrade";
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+
+    # ── Express REST API ──────────────────────────────────────────────────────
+    location /api/ {
+        proxy_pass         http://api_backend;
+        proxy_http_version 1.1;
+        proxy_set_header   Connection "";
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_read_timeout 120s;
+    }
+
+    # ── Swagger API Docs ──────────────────────────────────────────────────────
+    location /docs/ {
+        proxy_pass         http://api_backend;
+        proxy_http_version 1.1;
+        proxy_set_header   Host $host;
+    }
+
+    # ── React SPA (static files served by Vite preview / PM2) ────────────────
+    location / {
+        proxy_pass         http://web_frontend;
+        proxy_http_version 1.1;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        # SPA fallback — let React Router handle client-side routing
+        proxy_intercept_errors on;
+        error_page 404 = @spa_fallback;
+    }
+
+    location @spa_fallback {
+        proxy_pass http://web_frontend/;
+    }
+
+    # ── Gzip compression ──────────────────────────────────────────────────────
+    gzip on;
+    gzip_types text/plain application/json application/javascript text/css;
+    gzip_min_length 1024;
+}

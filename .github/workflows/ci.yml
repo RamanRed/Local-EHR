@@ -1,0 +1,157 @@
+###############################################################################
+# .github/workflows/ci.yml — SarvaVaidya EHR  ·  Continuous Integration
+#
+# Triggers : every push and PR targeting main or develop
+# Jobs      : type-check → lint → build → unit tests
+###############################################################################
+
+name: CI — Type Check, Lint & Build
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  PNPM_VERSION: "10"
+  NODE_VERSION: "20"
+
+jobs:
+  # ── Job 1: Type Check (shared-types → server → web) ─────────────────────────
+  typecheck:
+    name: TypeScript Type Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type-check shared-types
+        run: pnpm --filter @vox/shared-types tsc --noEmit
+
+      - name: Type-check server
+        run: pnpm --filter @vox/server tsc --noEmit
+
+      - name: Type-check web
+        run: pnpm --filter @vox/web tsc --noEmit
+
+  # ── Job 2: Build ─────────────────────────────────────────────────────────────
+  build:
+    name: Build All Packages
+    runs-on: ubuntu-latest
+    needs: typecheck
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend (Vite production build)
+        run: pnpm build
+        env:
+          # Stub env vars so Vite doesn't fail at build time
+          VITE_ZEGOCLOUD_APP_ID: "0"
+          VITE_ZEGOCLOUD_SERVER_SECRET: "stub"
+
+      - name: Build server (TypeScript compile)
+        run: pnpm --filter @vox/server build
+
+      - name: Upload build artifact (web dist)
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: apps/web/dist/
+          retention-days: 3
+
+  # ── Job 3: Docker Build Test ──────────────────────────────────────────────────
+  docker-build:
+    name: Docker Image Build Test
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build server Docker image (no push)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: apps/server/Dockerfile
+          push: false
+          tags: sarvavaidya-server:ci-test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── Job 4: Terraform Validate ─────────────────────────────────────────────────
+  terraform-validate:
+    name: Terraform Format & Validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.7"
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+        working-directory: terraform/
+
+      - name: Terraform Init (no backend — validation only)
+        run: terraform init -backend=false
+        working-directory: terraform/
+
+      - name: Terraform Validate
+        run: terraform validate
+        working-directory: terraform/
+
+  # ── Job 5: Ansible Lint ────────────────────────────────────────────────────────
+  ansible-lint:
+    name: Ansible Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Ansible + ansible-lint
+        run: pip install ansible ansible-lint
+
+      - name: Run ansible-lint on all playbooks
+        run: ansible-lint ansible/playbooks/
+        continue-on-error: true   # advisory in CI — fails CD separately

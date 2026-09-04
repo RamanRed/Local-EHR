@@ -1,0 +1,48 @@
+---
+# playbooks/deploy.yml
+# Application deployment — called by GitHub Actions CI/CD on every push to main.
+# Usage:
+#   ansible-playbook playbooks/deploy.yml \
+#     -i inventory/hosts.yml \
+#     -e "repo_url=https://github.com/YOUR_ORG/Local-EHR.git" \
+#     -e "deploy_branch=main" \
+#     -e "env=dev"
+
+- name: "SarvaVaidya — Deploy Application"
+  hosts: app_servers
+  gather_facts: true
+
+  vars:
+    repo_url: "{{ lookup('env', 'REPO_URL') | default('https://github.com/YOUR_ORG/Local-EHR.git') }}"
+    deploy_branch: "{{ lookup('env', 'DEPLOY_BRANCH') | default('main') }}"
+    env: "{{ lookup('env', 'ENVIRONMENT') | default('dev') }}"
+
+  pre_tasks:
+    - name: Print deploy info
+      ansible.builtin.debug:
+        msg: |
+          🚀 Deploying SarvaVaidya EHR
+          Branch : {{ deploy_branch }}
+          Env    : {{ env }}
+          Host   : {{ inventory_hostname }}
+
+  roles:
+    - role: app
+
+  post_tasks:
+    - name: Wait for API health check
+      ansible.builtin.uri:
+        url: "http://localhost:3001/api/health"
+        method: GET
+        status_code: 200
+      register: health
+      retries: 10
+      delay: 5
+      until: health.status == 200
+
+    - name: Deployment success
+      ansible.builtin.debug:
+        msg: |
+          ✅ Deployment complete!
+          API health: {{ health.json | default('OK') }}
+          App URL   : http://{{ ansible_host }}

@@ -1,0 +1,170 @@
+---
+# roles/app/tasks/main.yml
+# Clone/pull the SarvaVaidya repo, build, and manage via PM2
+
+# ── Fetch secrets from SSM ────────────────────────────────────────────────────
+
+- name: Fetch DATABASE_URL from SSM Parameter Store
+  ansible.builtin.shell: |
+    aws ssm get-parameter \
+      --name "/sarvavaidya/{{ env }}/DATABASE_URL" \
+      --with-decryption \
+      --query "Parameter.Value" \
+      --output text \
+      --region ap-south-1
+  register: ssm_db_url
+  become: false
+  changed_when: false
+
+- name: Fetch JWT_SECRET from SSM
+  ansible.builtin.shell: |
+    aws ssm get-parameter \
+      --name "/sarvavaidya/{{ env }}/JWT_SECRET" \
+      --with-decryption \
+      --query "Parameter.Value" \
+      --output text \
+      --region ap-south-1
+  register: ssm_jwt_secret
+  become: false
+  changed_when: false
+
+- name: Fetch GEMINI_API_KEY from SSM
+  ansible.builtin.shell: |
+    aws ssm get-parameter \
+      --name "/sarvavaidya/{{ env }}/GEMINI_API_KEY" \
+      --with-decryption \
+      --query "Parameter.Value" \
+      --output text \
+      --region ap-south-1
+  register: ssm_gemini_key
+  become: false
+  changed_when: false
+  ignore_errors: true
+
+- name: Fetch GROK_API_KEY from SSM
+  ansible.builtin.shell: |
+    aws ssm get-parameter \
+      --name "/sarvavaidya/{{ env }}/GROK_API_KEY" \
+      --with-decryption \
+      --query "Parameter.Value" \
+      --output text \
+      --region ap-south-1
+  register: ssm_grok_key
+  become: false
+  changed_when: false
+  ignore_errors: true
+
+# ── Code deployment ───────────────────────────────────────────────────────────
+
+- name: Clone or update repository
+  ansible.builtin.git:
+    repo: "{{ repo_url }}"
+    dest: /opt/sarvavaidya
+    version: "{{ deploy_branch | default('main') }}"
+    force: true
+  become: true
+  become_user: app
+
+- name: Install all pnpm dependencies
+  ansible.builtin.shell: |
+    cd /opt/sarvavaidya
+    pnpm install --frozen-lockfile
+  become: true
+  become_user: app
+  args:
+    executable: /bin/bash
+
+# ── Environment file ──────────────────────────────────────────────────────────
+
+- name: Deploy server .env file from template
+  ansible.builtin.template:
+    src: env.j2
+    dest: /opt/sarvavaidya/apps/server/.env
+    owner: app
+    group: app
+    mode: '0600'
+  become: true
+  vars:
+    db_url: "{{ ssm_db_url.stdout }}"
+    jwt_secret: "{{ ssm_jwt_secret.stdout }}"
+    gemini_api_key: "{{ ssm_gemini_key.stdout | default('') }}"
+    grok_api_key: "{{ ssm_grok_key.stdout | default('') }}"
+
+# ── Database migrations ───────────────────────────────────────────────────────
+
+- name: Generate Prisma client
+  ansible.builtin.shell: |
+    cd /opt/sarvavaidya/apps/server
+    pnpm db:generate
+  become: true
+  become_user: app
+  args:
+    executable: /bin/bash
+
+- name: Run Prisma DB migration (deploy mode — no interactive prompts)
+  ansible.builtin.shell: |
+    cd /opt/sarvavaidya/apps/server
+    npx prisma migrate deploy
+  become: true
+  become_user: app
+  args:
+    executable: /bin/bash
+  environment:
+    DATABASE_URL: "{{ ssm_db_url.stdout }}"
+
+# ── Build ─────────────────────────────────────────────────────────────────────
+
+- name: Build React frontend for production
+  ansible.builtin.shell: |
+    cd /opt/sarvavaidya
+    pnpm build
+  become: true
+  become_user: app
+  args:
+    executable: /bin/bash
+
+# ── PM2 process management ────────────────────────────────────────────────────
+
+- name: Deploy PM2 ecosystem config
+  ansible.builtin.copy:
+    content: |
+      module.exports = {
+        apps: [
+          {
+            name: 'sarvavaidya-api',
+            script: 'src/index.ts',
+            cwd: '/opt/sarvavaidya/apps/server',
+            interpreter: 'tsx',
+            instances: 1,
+            autorestart: true,
+            watch: false,
+            max_memory_restart: '512M',
+            env: { NODE_ENV: 'production' }
+          },
+          {
+            name: 'sarvavaidya-web',
+            script: 'node_modules/.bin/vite',
+            args: 'preview --host 0.0.0.0 --port 4173',
+            cwd: '/opt/sarvavaidya/apps/web',
+            instances: 1,
+            autorestart: true,
+            watch: false,
+            env: { NODE_ENV: 'production' }
+          }
+        ]
+      };
+    dest: /opt/sarvavaidya/ecosystem.config.js
+    owner: app
+    group: app
+    mode: '0644'
+  become: true
+
+- name: Start / reload PM2 processes
+  ansible.builtin.shell: |
+    cd /opt/sarvavaidya
+    pm2 startOrReload ecosystem.config.js --update-env
+    pm2 save
+  become: true
+  become_user: app
+  args:
+    executable: /bin/bash

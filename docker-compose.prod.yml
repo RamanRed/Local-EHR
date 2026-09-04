@@ -1,0 +1,113 @@
+###############################################################################
+# docker-compose.prod.yml — SarvaVaidya EHR  ·  Production Stack
+# Usage:  docker compose -f docker-compose.prod.yml up -d
+###############################################################################
+
+version: "3.9"
+
+services:
+  # ── Express API Server ───────────────────────────────────────────────────────
+  server:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    image: sarvavaidya-server:latest
+    container_name: sarvavaidya-server
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      # Injected at runtime — values come from .env or AWS SSM
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GROK_API_KEY: ${GROK_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_API_SPEECH_KEY: ${OPENAI_API_SPEECH_KEY}
+      OPENAI_VECTOR_STORE_ID: ${OPENAI_VECTOR_STORE_ID}
+      PINECONE_API_KEY: ${PINECONE_API_KEY}
+      PINECONE_INDEX: ${PINECONE_INDEX:-quickstart}
+      PINECONE_NAMESPACE: ${PINECONE_NAMESPACE:-medical_ai_diseases}
+      PINECONE_DIMENSION: ${PINECONE_DIMENSION:-1536}
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
+      PYTHON_EXECUTABLE: /usr/bin/python3
+    volumes:
+      - server_logs:/app/apps/server/logs
+    networks:
+      - sarvavaidya-net
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── React Frontend ────────────────────────────────────────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_ZEGOCLOUD_APP_ID: ${VITE_ZEGOCLOUD_APP_ID:-0}
+        VITE_ZEGOCLOUD_SERVER_SECRET: ${VITE_ZEGOCLOUD_SERVER_SECRET:-stub}
+    image: sarvavaidya-web:latest
+    container_name: sarvavaidya-web
+    restart: unless-stopped
+    ports:
+      - "4173:80"
+    networks:
+      - sarvavaidya-net
+    depends_on:
+      - server
+
+  # ── Nginx Reverse Proxy ───────────────────────────────────────────────────────
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: sarvavaidya-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.prod.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - sarvavaidya-net
+    depends_on:
+      - server
+      - web
+
+  # ── PostgreSQL (use Aurora on AWS — this is for local prod-like testing) ─────
+  postgres:
+    image: postgres:16-alpine
+    container_name: sarvavaidya-db
+    restart: unless-stopped
+    ports:
+      - "5435:5432"
+    environment:
+      POSTGRES_USER: ${DB_USER:-sarvavaidya}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-sarvavaidya}
+      POSTGRES_DB: ${DB_NAME:-sarvavaidya}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - sarvavaidya-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-sarvavaidya}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  sarvavaidya-net:
+    driver: bridge
+
+volumes:
+  pgdata:
+  server_logs:

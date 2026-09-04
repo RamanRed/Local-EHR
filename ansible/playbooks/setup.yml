@@ -1,0 +1,31 @@
+---
+# playbooks/setup.yml
+# One-time server provisioning — run this ONCE after Terraform creates the EC2.
+# Usage:
+#   ansible-playbook playbooks/setup.yml -i inventory/hosts.yml
+
+- name: "SarvaVaidya — Full Server Setup"
+  hosts: app_servers
+  become: true
+  gather_facts: true
+
+  vars:
+    env: "{{ lookup('env', 'ENVIRONMENT') | default('dev', true) }}"
+
+  roles:
+    - role: common        # System updates, swap, app user
+    - role: nodejs        # Node.js 20, pnpm, PM2
+    - role: nginx         # Nginx reverse proxy
+
+  post_tasks:
+    - name: Print setup completion summary
+      ansible.builtin.debug:
+        msg: |
+          ✅ Server setup complete!
+          ─────────────────────────────────────────────────
+          Node.js : installed
+          pnpm    : installed
+          PM2     : installed + systemd unit enabled
+          Nginx   : running on port 80
+          ─────────────────────────────────────────────────
+          Next step: run playbooks/deploy.yml to deploy the app

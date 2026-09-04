@@ -1,0 +1,210 @@
+###############################################################################
+# .github/workflows/cd.yml — SarvaVaidya EHR  ·  Continuous Delivery/Deploy
+#
+# Triggers : push to main (after CI passes)
+# Jobs      : terraform-plan → terraform-apply → ansible-deploy
+#
+# Required GitHub Secrets:
+#   AWS_ACCESS_KEY_ID          — IAM key for Terraform + SSM
+#   AWS_SECRET_ACCESS_KEY      — IAM secret
+#   EC2_SSH_PRIVATE_KEY        — PEM contents of sarvavaidya-keypair
+#   EC2_HOST                   — Elastic IP (or auto-read from tf output)
+#   TF_VAR_db_password         — Aurora master password
+#   REPO_URL                   — e.g. https://github.com/org/Local-EHR.git
+###############################################################################
+
+name: CD — Deploy to AWS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        default: "dev"
+        type: choice
+        options: [dev, staging, prod]
+
+env:
+  AWS_REGION: ap-south-1
+  ENVIRONMENT: ${{ github.event.inputs.environment || 'dev' }}
+  PNPM_VERSION: "10"
+  NODE_VERSION: "20"
+
+jobs:
+  # ── Job 1: Terraform Plan ─────────────────────────────────────────────────────
+  terraform-plan:
+    name: Terraform Plan
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+
+    defaults:
+      run:
+        working-directory: terraform/
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.7"
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Plan
+        run: |
+          terraform plan \
+            -var="environment=${{ env.ENVIRONMENT }}" \
+            -var="db_password=${{ secrets.TF_VAR_db_password }}" \
+            -out=tfplan
+        env:
+          TF_VAR_db_password: ${{ secrets.TF_VAR_db_password }}
+
+      - name: Upload plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ env.ENVIRONMENT }}
+          path: terraform/tfplan
+          retention-days: 1
+
+  # ── Job 2: Terraform Apply ────────────────────────────────────────────────────
+  terraform-apply:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+    needs: terraform-plan
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+
+    defaults:
+      run:
+        working-directory: terraform/
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.7"
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Download plan artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan-${{ env.ENVIRONMENT }}
+          path: terraform/
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve tfplan
+
+      - name: Export EC2 IP to env
+        id: tf_output
+        run: |
+          EC2_IP=$(terraform output -raw ec2_public_ip)
+          echo "EC2_HOST=$EC2_IP" >> $GITHUB_OUTPUT
+          echo "ec2_host=$EC2_IP" >> $GITHUB_ENV
+
+    outputs:
+      ec2_host: ${{ steps.tf_output.outputs.EC2_HOST }}
+
+  # ── Job 3: Ansible Deploy ─────────────────────────────────────────────────────
+  ansible-deploy:
+    name: Ansible Deploy
+    runs-on: ubuntu-latest
+    needs: terraform-apply
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Ansible
+        run: |
+          pip install ansible boto3 botocore
+          ansible-galaxy collection install amazon.aws community.general ansible.posix
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Write SSH private key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/sarvavaidya-keypair.pem
+          chmod 600 ~/.ssh/sarvavaidya-keypair.pem
+
+      - name: Generate dynamic inventory from Terraform output
+        run: |
+          EC2_HOST=${{ needs.terraform-apply.outputs.ec2_host }}
+          cat > ansible/inventory/hosts.yml << EOF
+          all:
+            vars:
+              ansible_user: ec2-user
+              ansible_ssh_private_key_file: ~/.ssh/sarvavaidya-keypair.pem
+              ansible_python_interpreter: /usr/bin/python3
+            children:
+              app_servers:
+                hosts:
+                  sarvavaidya-app:
+                    ansible_host: ${EC2_HOST}
+          EOF
+
+      - name: Wait for EC2 SSH to be ready
+        run: |
+          EC2_HOST=${{ needs.terraform-apply.outputs.ec2_host }}
+          timeout 300 bash -c "until ssh -o StrictHostKeyChecking=no \
+            -i ~/.ssh/sarvavaidya-keypair.pem \
+            ec2-user@${EC2_HOST} 'echo ready'; do sleep 10; done"
+
+      - name: Run setup playbook (idempotent — safe to re-run)
+        run: |
+          ansible-playbook ansible/playbooks/setup.yml \
+            -i ansible/inventory/hosts.yml \
+            -e "env=${{ env.ENVIRONMENT }}"
+        env:
+          ENVIRONMENT: ${{ env.ENVIRONMENT }}
+
+      - name: Run deploy playbook
+        run: |
+          ansible-playbook ansible/playbooks/deploy.yml \
+            -i ansible/inventory/hosts.yml \
+            -e "env=${{ env.ENVIRONMENT }}" \
+            -e "repo_url=${{ secrets.REPO_URL }}" \
+            -e "deploy_branch=main"
+        env:
+          ENVIRONMENT: ${{ env.ENVIRONMENT }}
+
+      - name: Post deployment summary
+        run: |
+          echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| Environment | ${{ env.ENVIRONMENT }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| EC2 Host | ${{ needs.terraform-apply.outputs.ec2_host }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Branch | main |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | ${{ github.sha }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| App URL | http://${{ needs.terraform-apply.outputs.ec2_host }} |" >> $GITHUB_STEP_SUMMARY

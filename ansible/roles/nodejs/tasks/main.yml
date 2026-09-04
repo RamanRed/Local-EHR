@@ -1,0 +1,56 @@
+---
+# roles/nodejs/tasks/main.yml
+# Install Node.js 20 LTS, pnpm, PM2
+
+- name: Add NodeSource Node.js 20 LTS repository
+  ansible.builtin.shell: |
+    curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
+  become: true
+  args:
+    executable: /bin/bash
+
+- name: Install Node.js 20
+  ansible.builtin.dnf:
+    name: nodejs
+    state: present
+  become: true
+
+- name: Verify Node.js version
+  ansible.builtin.command: node --version
+  register: node_version
+  changed_when: false
+
+- name: Print Node.js version
+  ansible.builtin.debug:
+    msg: "Node.js installed: {{ node_version.stdout }}"
+
+- name: Install pnpm (package manager for monorepo)
+  ansible.builtin.shell: |
+    npm install -g pnpm@10
+  become: true
+  args:
+    executable: /bin/bash
+
+- name: Install PM2 (process manager — keeps Node alive after SSH disconnect)
+  ansible.builtin.shell: |
+    npm install -g pm2
+  become: true
+  args:
+    executable: /bin/bash
+
+- name: Configure PM2 startup on boot
+  ansible.builtin.shell: |
+    pm2 startup systemd -u app --hp /home/app
+  become: true
+  args:
+    executable: /bin/bash
+  register: pm2_startup
+  changed_when: "'systemctl' in pm2_startup.stdout"
+
+- name: Enable PM2 systemd service
+  ansible.builtin.systemd:
+    name: pm2-app
+    enabled: true
+    daemon_reload: true
+  become: true
+  ignore_errors: true   # service may not exist yet on first run

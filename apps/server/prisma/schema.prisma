@@ -1,0 +1,246 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  NURSE
+  DOCTOR
+  PATIENT
+}
+
+enum PatientStatus {
+  WAITING
+  IN_CONSULT
+  UNDER_TREATMENT
+  CURED
+  EMERGENCY
+}
+
+enum FollowUpStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}
+
+model User {
+  id               String    @id @default(cuid())
+  name             String
+  role             Role
+  aadhaarNumber    String    @unique
+  phone            String?
+  email            String?
+  specialization   String?
+  photoUrl         String?
+  dob              DateTime?
+  gender           String?
+  bloodGroup       String?
+  emergencyContact String?
+  createdAt        DateTime  @default(now())
+}
+
+model Patient {
+  id               String        @id @default(cuid())
+  name             String
+  aadhaarNumber    String?       @unique
+  dob              DateTime?
+  gender           String
+  phone            String?
+  bloodGroup       String?
+  emergencyContact String?
+  photoUrl         String?
+  status           PatientStatus @default(WAITING)
+  consultSummary   String?
+  createdBy        String
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  vitals           Vitals?
+  consults         Consult[]
+  conditions       Condition[]
+  medications      Medication[]
+  appointments     Appointment[]
+  followUps        FollowUp[]
+  followUpCalls    FollowUpCall[]
+}
+
+model Vitals {
+  id            String   @id @default(cuid())
+  patientId     String   @unique
+  patient       Patient  @relation(fields: [patientId], references: [id])
+  bloodPressure String?
+  heartRate     Int?
+  temperature   Float?
+  oxygenSat     Int?
+  bloodGlucose  Float?
+  weight        Float?
+  height        Float?
+  // Stored as JSON string e.g. '["fever","cough"]' — SQLite has no native array type
+  symptoms      String?
+  notes         String?
+  recordedAt    DateTime @default(now())
+}
+
+model Consult {
+  id                  String    @id @default(cuid())
+  patientId           String
+  patient             Patient   @relation(fields: [patientId], references: [id])
+  doctorId            String
+  transcript          String?
+  soapSubjective      String?
+  soapObjective       String?
+  soapAssessment      String?
+  soapPlan            String?
+  // Stored as JSON string
+  icdCodes            String?
+  patientSummary      String?
+  followUpDate        DateTime?
+  finalized           Boolean   @default(false)
+  isFollowUp          Boolean   @default(false)
+  progressNote        String?
+  prescription        String?
+  symptoms            String?
+  fulfilledFollowUpId String?
+  fulfilledFollowUp   FollowUp? @relation("FulfilledByConsult", fields: [fulfilledFollowUpId], references: [id])
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  medications         Medication[]
+  followUpCalls       FollowUpCall[]
+}
+
+model Condition {
+  id             String   @id @default(cuid())
+  patientId      String
+  patient        Patient  @relation(fields: [patientId], references: [id])
+  code           String
+  system         String
+  display        String
+  clinicalStatus String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Medication {
+  id           String    @id @default(cuid())
+  patientId    String
+  patient      Patient   @relation(fields: [patientId], references: [id])
+  consultId    String?
+  consult      Consult?  @relation(fields: [consultId], references: [id])
+  drugName     String
+  dosage       String
+  frequency    String
+  route        String?
+  startDate    DateTime  @default(now())
+  endDate      DateTime?
+  prescriberId String
+  notes        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  userId       String
+  action       String
+  resourceType String
+  resourceId   String?
+  details      String?
+  timestamp    DateTime @default(now())
+}
+
+enum FollowUpCallStatus {
+  scheduled
+  in_progress
+  completed
+  failed
+  cancelled
+}
+
+enum UrgencyLevel {
+  none
+  low
+  medium
+  high
+  critical
+}
+
+enum AppointmentType {
+  followUpCall
+  inClinic
+  videoConsultation
+}
+
+enum AppointmentReason {
+  FollowUp
+  FeverCold
+  RoutineCheckUp
+  PainInjury
+  SkinIssues
+  DigestiveIssues
+  MentalHealth
+  Other
+}
+
+enum AppointmentStatus {
+  pending
+  confirmed
+  completed
+  cancelled
+}
+
+model Appointment {
+  id            String             @id @default(cuid())
+  patientId     String
+  patient       Patient            @relation(fields: [patientId], references: [id])
+  doctorId      String?
+  doctorName    String?
+  type          AppointmentType
+  reason        AppointmentReason?
+  symptoms      String?
+  preferredDate DateTime
+  timeSlot      String
+  mobile        String
+  status        AppointmentStatus  @default(pending)
+  roomId        String?
+  videoLink     String?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+}
+
+model FollowUp {
+  id                 String         @id @default(cuid())
+  patientId          String
+  patient            Patient        @relation(fields: [patientId], references: [id])
+  doctorId           String
+  baseConsultId      String
+  followUpDate       DateTime
+  status             FollowUpStatus @default(PENDING)
+  notes              String?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  fulfillingConsults Consult[]      @relation("FulfilledByConsult")
+}
+
+model FollowUpCall {
+  id                 String              @id @default(cuid())
+  patientId          String
+  patient            Patient             @relation(fields: [patientId], references: [id])
+  consultId          String
+  consult            Consult             @relation(fields: [consultId], references: [id])
+  initiatedBy        String
+  status             FollowUpCallStatus  @default(scheduled)
+  transcript         String?
+  summary            String?
+  // Stored as JSON string
+  structuredFindings String?
+  urgencyLevel       UrgencyLevel        @default(none)
+  scheduledAt        DateTime?
+  startedAt          DateTime?
+  completedAt        DateTime?
+  durationSeconds    Int?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+}

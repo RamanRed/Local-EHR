@@ -1,0 +1,67 @@
+---
+# playbooks/rollback.yml
+# Emergency rollback — checks out the previous Git commit and redeploys.
+# Usage:
+#   ansible-playbook playbooks/rollback.yml \
+#     -i inventory/hosts.yml \
+#     -e "rollback_commit=abc1234"   # optional specific commit
+
+- name: "SarvaVaidya — Emergency Rollback"
+  hosts: app_servers
+  gather_facts: true
+
+  vars:
+    rollback_commit: "{{ lookup('env', 'ROLLBACK_COMMIT') | default('HEAD~1') }}"
+
+  tasks:
+    - name: Get current commit (for audit log)
+      ansible.builtin.command: git -C /opt/sarvavaidya rev-parse HEAD
+      register: current_commit
+      changed_when: false
+
+    - name: Print rollback info
+      ansible.builtin.debug:
+        msg: "⏪ Rolling back from {{ current_commit.stdout[:8] }} to {{ rollback_commit }}"
+
+    - name: Checkout rollback commit
+      ansible.builtin.command: git -C /opt/sarvavaidya checkout {{ rollback_commit }}
+      become: true
+      become_user: app
+
+    - name: Reinstall dependencies for rolled-back version
+      ansible.builtin.shell: |
+        cd /opt/sarvavaidya && pnpm install --frozen-lockfile
+      become: true
+      become_user: app
+      args:
+        executable: /bin/bash
+
+    - name: Rebuild frontend
+      ansible.builtin.shell: |
+        cd /opt/sarvavaidya && pnpm build
+      become: true
+      become_user: app
+      args:
+        executable: /bin/bash
+
+    - name: Restart PM2 processes
+      ansible.builtin.shell: |
+        pm2 restart all
+      become: true
+      become_user: app
+      args:
+        executable: /bin/bash
+
+    - name: Wait for health check
+      ansible.builtin.uri:
+        url: "http://localhost:3001/api/health"
+        method: GET
+        status_code: 200
+      retries: 10
+      delay: 5
+      register: health
+      until: health.status == 200
+
+    - name: Rollback complete
+      ansible.builtin.debug:
+        msg: "✅ Rollback successful. Running commit: {{ rollback_commit }}"

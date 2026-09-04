@@ -1,0 +1,80 @@
+---
+# roles/common/tasks/main.yml
+# Common system setup: updates, time zone, swap, essential packages
+
+- name: Update all system packages
+  ansible.builtin.dnf:
+    name: "*"
+    state: latest
+    update_cache: true
+  become: true
+
+- name: Install essential packages
+  ansible.builtin.dnf:
+    name:
+      - git
+      - curl
+      - wget
+      - unzip
+      - htop
+      - vim
+      - python3
+      - python3-pip
+      - jq
+      - openssl
+    state: present
+  become: true
+
+- name: Set timezone to Asia/Kolkata (IST)
+  community.general.timezone:
+    name: Asia/Kolkata
+  become: true
+
+- name: Create 2 GB swap file (prevents OOM on t3.medium)
+  ansible.builtin.command: |
+    dd if=/dev/zero of=/swapfile bs=1M count=2048
+  args:
+    creates: /swapfile
+  become: true
+
+- name: Set swap file permissions
+  ansible.builtin.file:
+    path: /swapfile
+    owner: root
+    group: root
+    mode: '0600'
+  become: true
+
+- name: Format swap file
+  ansible.builtin.command: mkswap /swapfile
+  become: true
+  when: ansible_swaptotal_mb < 1
+
+- name: Enable swap
+  ansible.builtin.command: swapon /swapfile
+  become: true
+  when: ansible_swaptotal_mb < 1
+
+- name: Persist swap in /etc/fstab
+  ansible.builtin.lineinfile:
+    path: /etc/fstab
+    line: "/swapfile none swap sw 0 0"
+    state: present
+  become: true
+
+- name: Create application user (app)
+  ansible.builtin.user:
+    name: app
+    shell: /bin/bash
+    create_home: true
+    groups: ["wheel"]
+  become: true
+
+- name: Create app deployment directory
+  ansible.builtin.file:
+    path: /opt/sarvavaidya
+    state: directory
+    owner: app
+    group: app
+    mode: '0755'
+  become: true
