@@ -39,7 +39,6 @@
         group: root
         mode: '0644'
       become: true
-      notify: Reload nginx
 
     - name: Validate nginx config
       ansible.builtin.command: nginx -t
