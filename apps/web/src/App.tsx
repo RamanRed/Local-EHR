@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import AadhaarLoginPage from "@/pages/auth/AadhaarLoginPage";
 import { AuthGuard } from "@/components/shared/AuthGuard";
 import { Layout } from "@/components/shared/Layout";
+import { RoleGuard } from "@/components/shared/RoleGuard";
 import { RoleRedirect } from "@/components/shared/RoleRedirect";
 import NurseDashboard from "@/pages/nurse/NurseDashboard";
 import AddPatient from "@/pages/nurse/AddPatient";
@@ -36,24 +37,35 @@ export default function App() {
             </AuthGuard>
           }
         >
-          <Route path="/nurse" element={<NurseDashboard />} />
-          <Route path="/nurse/add-patient" element={<AddPatient />} />
-          <Route path="/nurse/edit-patient/:id" element={<EditPatient />} />
-          <Route path="/nurse/history" element={<NurseHistory />} />
-          <Route path="/nurse/follow-ups" element={<FollowUpList />} />
-          <Route path="/nurse/settings" element={<SettingsPage />} />
-          <Route path="/doctor" element={<DoctorDashboard />} />
-          <Route path="/doctor/appointments" element={<DoctorAppointments />} />
-          <Route path="/doctor/video-call/:id" element={<VideoCallPage />} />
-          <Route path="/doctor/consult/:patientId" element={<ConsultPage />} />
-          <Route path="/doctor/history" element={<DoctorHistory />} />
-          <Route path="/doctor/patient/:patientId" element={<PatientDetailPage />} />
-          <Route path="/doctor/follow-ups" element={<FollowUpList />} />
-          <Route path="/doctor/follow-up-consult/:followUpId" element={<FollowUpConsultPage />} />
-<Route path="/doctor/settings" element={<SettingsPage />} />
-          <Route path="/patient" element={<PatientPortal />} />
-          <Route path="/patient/history" element={<PatientHistory />} />
-          <Route path="/patient/settings" element={<SettingsPage />} />
+          {/* Nurse-only routes */}
+          <Route element={<RoleGuard allowedRoles={["NURSE"]} />}>
+            <Route path="/nurse" element={<NurseDashboard />} />
+            <Route path="/nurse/add-patient" element={<AddPatient />} />
+            <Route path="/nurse/edit-patient/:id" element={<EditPatient />} />
+            <Route path="/nurse/history" element={<NurseHistory />} />
+            <Route path="/nurse/follow-ups" element={<FollowUpList />} />
+            <Route path="/nurse/settings" element={<SettingsPage />} />
+          </Route>
+
+          {/* Doctor-only routes */}
+          <Route element={<RoleGuard allowedRoles={["DOCTOR"]} />}>
+            <Route path="/doctor" element={<DoctorDashboard />} />
+            <Route path="/doctor/appointments" element={<DoctorAppointments />} />
+            <Route path="/doctor/video-call/:id" element={<VideoCallPage />} />
+            <Route path="/doctor/consult/:patientId" element={<ConsultPage />} />
+            <Route path="/doctor/history" element={<DoctorHistory />} />
+            <Route path="/doctor/patient/:patientId" element={<PatientDetailPage />} />
+            <Route path="/doctor/follow-ups" element={<FollowUpList />} />
+            <Route path="/doctor/follow-up-consult/:followUpId" element={<FollowUpConsultPage />} />
+            <Route path="/doctor/settings" element={<SettingsPage />} />
+          </Route>
+
+          {/* Patient-only routes */}
+          <Route element={<RoleGuard allowedRoles={["PATIENT"]} />}>
+            <Route path="/patient" element={<PatientPortal />} />
+            <Route path="/patient/history" element={<PatientHistory />} />
+            <Route path="/patient/settings" element={<SettingsPage />} />
+          </Route>
         </Route>
 
         {/* Catch-all */}
