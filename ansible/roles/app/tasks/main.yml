@@ -114,15 +114,6 @@
 
 # ── Build ─────────────────────────────────────────────────────────────────────
 
-- name: Build server (TypeScript compile — root package.json build script only covers the frontend)
-  ansible.builtin.shell: |
-    cd /opt/sarvavaidya/apps/server
-    pnpm build
-  become: true
-  become_user: app
-  args:
-    executable: /bin/bash
-
 - name: Build React frontend for production
   ansible.builtin.shell: |
     cd /opt/sarvavaidya
@@ -143,8 +134,9 @@
         apps: [
           {
             name: 'sarvavaidya-api',
-            script: 'dist/index.js',
+            script: 'src/index.ts',
             cwd: '/opt/sarvavaidya/apps/server',
+            interpreter: '/opt/sarvavaidya/apps/server/node_modules/.bin/tsx',
             instances: 1,
             autorestart: true,
             watch: false,
