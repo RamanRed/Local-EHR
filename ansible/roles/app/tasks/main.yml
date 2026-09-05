@@ -146,6 +146,7 @@
           {
             name: 'sarvavaidya-web',
             script: 'node_modules/.bin/vite',
+            interpreter: 'none',
             args: 'preview --host 0.0.0.0 --port 4173',
             cwd: '/opt/sarvavaidya/apps/web',
             instances: 1,
