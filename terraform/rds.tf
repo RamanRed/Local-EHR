@@ -23,7 +23,7 @@ resource "aws_db_subnet_group" "main" {
 resource "aws_db_instance" "main" {
   identifier     = "${var.project_name}-db-${var.environment}"
   engine         = "postgres"
-  engine_version = "15.8"
+  engine_version = "15.19"
   instance_class = var.db_instance_class
 
   allocated_storage     = var.db_allocated_storage
@@ -41,8 +41,8 @@ resource "aws_db_instance" "main" {
 
   multi_az                   = false   # Multi-AZ is NOT free-tier eligible
   backup_retention_period    = var.db_backup_retention_days
-  preferred_backup_window    = "02:00-03:00"       # UTC — off-peak for IST
-  preferred_maintenance_window = "sun:04:00-sun:05:00"
+  backup_window               = "02:00-03:00"       # UTC — off-peak for IST
+  maintenance_window           = "sun:04:00-sun:05:00"
 
   skip_final_snapshot       = var.environment != "prod"
   final_snapshot_identifier = var.environment == "prod" ? "${var.project_name}-final-snapshot" : null

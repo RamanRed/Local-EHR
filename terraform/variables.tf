@@ -64,8 +64,9 @@ variable "instance_type" {
 variable "ami_id" {
   description = "Amazon Linux 2023 AMI (ap-south-1). Update periodically."
   type        = string
-  # Amazon Linux 2023 (AL2023) in ap-south-1 — update via AWS console/SSM
-  default     = "ami-0f58b397bc5c1f2e8"
+  # Amazon Linux 2023 (AL2023) in ap-south-1 — fetched via:
+  # aws ssm get-parameter --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64 --region ap-south-1
+  default     = "ami-090d68841c2a28756"
 }
 
 variable "key_pair_name" {

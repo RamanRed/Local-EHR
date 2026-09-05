@@ -101,10 +101,10 @@
   args:
     executable: /bin/bash
 
-- name: Run Prisma DB migration (deploy mode — no interactive prompts)
+- name: Sync database schema (db push — fresh RDS, migration history is stale/abandoned)
   ansible.builtin.shell: |
     cd /opt/sarvavaidya/apps/server
-    npx prisma migrate deploy
+    npx prisma db push --accept-data-loss --skip-generate
   become: true
   become_user: app
   args:

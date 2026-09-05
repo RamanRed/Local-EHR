@@ -13,7 +13,6 @@
   ansible.builtin.dnf:
     name:
       - git
-      - curl
       - wget
       - unzip
       - htop

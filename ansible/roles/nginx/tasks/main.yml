@@ -39,10 +39,3 @@
     state: enabled
   become: true
   ignore_errors: true
-
-handlers:
-  - name: Reload nginx
-    ansible.builtin.systemd:
-      name: nginx
-      state: reloaded
-    become: true

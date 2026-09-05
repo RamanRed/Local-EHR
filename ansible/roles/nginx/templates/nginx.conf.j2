@@ -69,7 +69,7 @@ server {
     }
 
     location @spa_fallback {
-        proxy_pass http://web_frontend/;
+        proxy_pass http://web_frontend;
     }
 
     # ── Gzip compression ──────────────────────────────────────────────────────
