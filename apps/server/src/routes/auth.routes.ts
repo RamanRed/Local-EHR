@@ -90,17 +90,11 @@ router.post("/aadhaar/send-otp", async (req: Request, res: Response): Promise<vo
       return;
     }
 
-    // In dev mode, use fixed OTP for easy testing; in production, generate random
-    const otp = process.env.NODE_ENV !== "production"
-      ? "123456"
-      : Math.floor(100000 + Math.random() * 900000).toString();
+    // Hardcoded OTP for demo — replace with real SMS provider before go-live
+    const otp = "123456";
 
     // Store OTP in memory with expiry
     otpStore.set(aadhaarNumber, { otp, expiresAt: Date.now() + OTP_EXPIRY_MS });
-
-    if (process.env.NODE_ENV !== "production") {
-      console.log(`[OTP] Aadhaar ${aadhaarNumber}: ${otp}`);
-    }
 
     res.json({ message: "OTP sent successfully" });
   } catch (error) {
