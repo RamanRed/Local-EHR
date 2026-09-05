@@ -30,6 +30,29 @@
     - role: app
 
   post_tasks:
+    # ── Push nginx config on every deploy (catches template changes) ──────────
+    - name: Deploy nginx config from template
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../roles/nginx/templates/nginx.conf.j2"
+        dest: /etc/nginx/conf.d/sarvavaidya.conf
+        owner: root
+        group: root
+        mode: '0644'
+      become: true
+      notify: Reload nginx
+
+    - name: Validate nginx config
+      ansible.builtin.command: nginx -t
+      become: true
+      changed_when: false
+
+    - name: Reload nginx
+      ansible.builtin.systemd:
+        name: nginx
+        state: reloaded
+      become: true
+
+    # ── API health check ───────────────────────────────────────────────────────
     - name: Wait for API health check
       ansible.builtin.uri:
         url: "http://localhost:3001/api/health"
