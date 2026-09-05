@@ -29,9 +29,9 @@
     name: Asia/Kolkata
   become: true
 
-- name: Create 2 GB swap file (prevents OOM on t3.medium)
+- name: Create 4 GB swap file (prevents OOM building the frontend on t3.micro)
   ansible.builtin.command: |
-    dd if=/dev/zero of=/swapfile bs=1M count=2048
+    dd if=/dev/zero of=/swapfile bs=1M count=4096
   args:
     creates: /swapfile
   become: true

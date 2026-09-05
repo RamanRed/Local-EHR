@@ -122,6 +122,8 @@
   become_user: app
   args:
     executable: /bin/bash
+  environment:
+    NODE_OPTIONS: "--max-old-space-size=896"
 
 # ── PM2 process management ────────────────────────────────────────────────────
 
