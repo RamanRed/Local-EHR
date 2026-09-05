@@ -127,7 +127,44 @@
 
 # ── PM2 process management ────────────────────────────────────────────────────
 
-- name: Deploy PM2 ecosystem config
+# ── Fix dist folder ownership so nginx (runs as 'nginx' user) can read it ────
+- name: Set dist folder ownership to allow nginx to read
+  ansible.builtin.file:
+    path: /opt/sarvavaidya/apps/web/dist
+    owner: app
+    group: nginx
+    mode: '0755'
+    state: directory
+    recurse: true
+  become: true
+
+# Make the full deploy path traversable by nginx
+- name: Ensure /opt/sarvavaidya is group-executable by nginx
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  become: true
+  loop:
+    - /opt/sarvavaidya
+    - /opt/sarvavaidya/apps
+    - /opt/sarvavaidya/apps/web
+
+# ── PM2 process management ────────────────────────────────────────────────────
+
+# Nginx now serves the static frontend directly from dist/,
+# so there is no sarvavaidya-web PM2 process anymore.
+- name: Remove old sarvavaidya-web PM2 process (vite preview — no longer needed)
+  ansible.builtin.shell: |
+    pm2 delete sarvavaidya-web || true
+    pm2 save --force
+  become: true
+  become_user: app
+  args:
+    executable: /bin/bash
+  changed_when: false
+
+- name: Deploy PM2 ecosystem config (API only)
   ansible.builtin.copy:
     content: |
       module.exports = {
@@ -141,17 +178,6 @@
             autorestart: true,
             watch: false,
             max_memory_restart: '512M',
-            env: { NODE_ENV: 'production' }
-          },
-          {
-            name: 'sarvavaidya-web',
-            script: 'node_modules/.bin/vite',
-            interpreter: 'none',
-            args: 'preview --host 0.0.0.0 --port 4173',
-            cwd: '/opt/sarvavaidya/apps/web',
-            instances: 1,
-            autorestart: true,
-            watch: false,
             env: { NODE_ENV: 'production' }
           }
         ]
