@@ -1,102 +1,133 @@
-<![CDATA[# SarvaVaidya — AI-Powered Local EHR System
+# SarvaVaidya — AI-Powered Cloud & Local EHR System
 
-> **SarvaVaidya** (meaning "Universal Healer") is a full-stack, AI-powered Electronic Health Record (EHR) system designed for small clinics and rural healthcare setups. It features role-based workflows for **Nurses**, **Doctors**, and **Patients**, real-time video consultations, AI-driven clinical decision support, FHIR-compliant data export, and automated follow-up calls.
+> **SarvaVaidya** (meaning *"Universal Healer"*) is an enterprise-grade, full-stack Electronic Health Record (EHR) system tailored for clinics, remote health centers, and modern medical practices. It integrates role-isolated workflows for **Doctors**, **Nurses**, and **Patients**, real-time video consultations, multi-LLM clinical decision support (Google Gemini & xAI Grok), Pinecone vector similarity search, FHIR R4 standard compliance, and autonomous AI-powered patient follow-up calls.
+
+[![Deployment: Live on AWS EC2](https://img.shields.io/badge/Deployment-AWS%20EC2%20(Live)-orange?logo=amazon-aws)](http://15.206.15.61)
+[![Runtime: Node.js & React 19](https://img.shields.io/badge/Stack-Node%20%7C%20React%2019%20%7C%20Vite-blue?logo=react)](https://react.dev)
+[![Database: PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL%2016-blue?logo=postgresql)](https://www.postgresql.org)
+[![ORM: Prisma](https://img.shields.io/badge/ORM-Prisma%206-black?logo=prisma)](https://www.prisma.io)
+[![IaC: Terraform & Ansible](https://img.shields.io/badge/DevOps-Terraform%20%2B%20Ansible-purple?logo=terraform)](https://www.terraform.io)
 
 ---
 
 ## Table of Contents
 
+- [Live Deployment Status](#live-deployment-status)
 - [Architecture Overview](#architecture-overview)
 - [Tech Stack](#tech-stack)
 - [Monorepo Structure](#monorepo-structure)
-- [Prerequisites](#prerequisites)
-- [Getting Started](#getting-started)
+- [Role-Based Access Control & Routing](#role-based-access-control--routing)
+- [Demo Credentials](#demo-credentials)
+- [Getting Started (Local Development)](#getting-started-local-development)
 - [Environment Variables](#environment-variables)
-- [Database](#database)
+- [Database Management](#database-management)
+- [Production Deployment (AWS EC2 + RDS)](#production-deployment-aws-ec2--rds)
+- [Production Runbook & Maintenance (EC2)](#production-runbook--maintenance-ec2)
 - [API Reference](#api-reference)
-- [Frontend Application](#frontend-application)
-- [AI & ML Pipeline](#ai--ml-pipeline)
-- [Healthcare Compliance](#healthcare-compliance)
-- [Key Design Decisions](#key-design-decisions)
-- [Common Modification Scenarios](#common-modification-scenarios)
+- [AI & Clinical Intelligence Pipeline](#ai--clinical-intelligence-pipeline)
+- [Healthcare Compliance & Standards](#healthcare-compliance--standards)
 - [Troubleshooting](#troubleshooting)
+- [Scripts Reference](#scripts-reference)
+
+---
+
+## Live Deployment Status
+
+The application is deployed live on AWS infrastructure:
+
+- **Public Endpoint / Web App**: [http://15.206.15.61](http://15.206.15.61)
+- **API Base URL**: `http://15.206.15.61/api`
+- **Swagger Documentation**: `http://15.206.15.61/docs`
+- **Health Check**: `http://15.206.15.61/api/health`
+- **Region**: AWS `ap-south-1` (Mumbai)
+- **Infrastructure**: EC2 (t3.micro / Amazon Linux 2023) + RDS PostgreSQL + Nginx + PM2
 
 ---
 
 ## Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        Client (Browser)                             │
-│                  React 19 + Vite + Tailwind CSS                     │
-│          Zustand (auth state) · Axios (HTTP) · WebSocket            │
-└────────────────────────┬───────────────┬────────────────────────────┘
-                         │  HTTP /api/*  │  WS /ws/*
-                         ▼               ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                     Backend (Express 5)                              │
-│        JWT Auth · Role Middleware · Swagger Docs at /docs           │
-│                                                                     │
-│  ┌──────────┐ ┌───────────┐ ┌──────────┐ ┌──────────────────────┐  │
-│  │  Routes   │ │ Services  │ │  Utils   │ │  Middleware           │  │
-│  │ (12 files)│ │(13 files) │ │(5 files) │ │  auth.middleware.ts   │  │
-│  └──────────┘ └───────────┘ └──────────┘ └──────────────────────┘  │
-│                         │                                           │
-│           ┌─────────────┼─────────────┐                             │
-│           ▼             ▼             ▼                             │
-│     ┌──────────┐  ┌──────────┐  ┌──────────┐                      │
-│     │ Prisma   │  │ AI APIs  │  │ Pinecone │                      │
-│     │ (SQLite) │  │ Gemini / │  │ Vector   │                      │
-│     │          │  │ OpenAI   │  │ Store    │                      │
-│     └──────────┘  └──────────┘  └──────────┘                      │
-└─────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           Client (Browser)                              │
+│             React 19 · Vite 6 · Tailwind CSS · Zustand Store            │
+│         RoleGuard & AuthGuard · Axios HTTP Client · WebSockets          │
+└────────────────────────────────────┬────────────────────────────────────┘
+                                     │ HTTP :80 / WS
+                                     ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                      Nginx Reverse Proxy (:80)                          │
+│  Static Frontend: /opt/sarvavaidya/apps/web/dist (Direct static serve)  │
+│  API Proxy:       /api/*  ───►  http://127.0.0.1:3001                   │
+│  WebSocket Proxy: /ws/*   ───►  http://127.0.0.1:3001                   │
+└────────────────────────────────────┬────────────────────────────────────┘
+                                     │
+                                     ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                  Backend: Express 5 API (PM2 Service)                   │
+│      JWT Auth · Role-Based Middleware · HIPAA Logger · Swagger /docs    │
+│                                                                         │
+│ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌──────────────┐ │
+│ │  Auth & User  │ │ Patient & Reg │ │ Consultations │ │ Appointments │ │
+│ └───────────────┘ └───────────────┘ └───────────────┘ └──────────────┘ │
+│ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌──────────────┐ │
+│ │  AI Pipeline  │ │ FollowUp Call │ │  FHIR Export  │ │ Stats/Upload │ │
+│ └───────────────┘ └───────────────┘ └───────────────┘ └──────────────┘ │
+│         │                 │                 │                │         │
+│         ▼                 ▼                 ▼                ▼         │
+│ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌──────────────┐ │
+│ │  Prisma ORM   │ │  Google Gemini│ │ xAI Grok /    │ │   Pinecone   │ │
+│ │ PostgreSQL 16 │ │     v1.42     │ │ OpenAI API    │ │ Vector Store │ │
+│ └───────────────┘ └───────────────┘ └───────────────┘ └──────────────┘ │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
-The application is a **pnpm monorepo** with three packages:
+The system is structured as a high-performance **pnpm monorepo**:
 
-| Package | Path | Purpose |
+| Package / Module | Path | Purpose |
 |---|---|---|
-| `@vox/server` | `apps/server/` | Express 5 REST API + WebSocket server |
-| `@vox/web` | `apps/web/` | React 19 SPA (Vite) |
-| `@vox/shared-types` | `packages/shared-types/` | Shared TypeScript interfaces & enums |
+| `@vox/web` | `apps/web/` | React 19 SPA with role-guarded routing & clinical dashboards |
+| `@vox/server` | `apps/server/` | Express 5 REST & WebSocket API, AI orchestration, Prisma ORM |
+| `@vox/shared-types` | `packages/shared-types/` | Shared TypeScript interfaces, DTOs, and enums |
+| `terraform/` | `terraform/` | Infrastructure as Code for AWS VPC, EC2, RDS PostgreSQL, Security Groups |
+| `ansible/` | `ansible/` | Automation playbooks for server configuration, builds, and PM2 deploys |
 
 ---
 
 ## Tech Stack
 
-### Backend (`apps/server`)
-| Category | Technology |
-|---|---|
-| Runtime | Node.js + TypeScript (tsx for dev) |
-| Framework | Express 5 |
-| ORM | Prisma (SQLite for local dev, PostgreSQL-ready) |
-| Auth | JWT (jsonwebtoken) + bcryptjs |
-| AI — Primary | Google Gemini (`@google/genai`) |
-| AI — Secondary | OpenAI (embeddings, speech) |
-| Vector DB | Pinecone (`@pinecone-database/pinecone`) |
-| Real-time | WebSocket (`ws`) |
-| File Upload | Multer → Cloudinary |
-| API Docs | Swagger UI Express |
-| Transcription | Python (Whisper / Qwen2-Audio via Ollama) |
-
 ### Frontend (`apps/web`)
-| Category | Technology |
-|---|---|
-| Framework | React 19 |
-| Build Tool | Vite 6 |
-| Styling | Tailwind CSS 3.4 + tailwindcss-animate |
-| State | Zustand 5 |
-| Routing | React Router DOM 7 |
-| Forms | React Hook Form + Zod validation |
-| HTTP Client | Axios |
-| UI Primitives | Radix UI (Dialog, Label, Slot, Separator) |
-| Icons | Lucide React |
-| Video Calls | ZegoCloud UIKit Prebuilt |
-| Date Utils | date-fns |
+- **Framework**: React 19 (SPA)
+- **Build Tool**: Vite 6
+- **Routing**: React Router DOM 7 with route grouping and strict `RoleGuard` protection
+- **Styling**: Tailwind CSS 3.4, `tailwindcss-animate`, Radix UI primitives
+- **State**: Zustand 5 (persisted authentication & user context)
+- **Forms & Validation**: React Hook Form + Zod
+- **Icons**: Lucide React
+- **Video Consultations**: ZegoCloud UIKit Prebuilt (`@zegocloud/zego-uikit-prebuilt`)
+- **HTTP Client**: Axios with automatic JWT interceptors
 
-### Shared (`packages/shared-types`)
-- Pure TypeScript type definitions (no runtime dependencies)
-- Consumed by both `@vox/server` and `@vox/web` via `workspace:*`
+### Backend (`apps/server`)
+- **Runtime**: Node.js (v20+ / ES2022) with TypeScript (`tsx` for dev & production runner)
+- **Web Framework**: Express 5
+- **Database ORM**: Prisma 6 configured with **PostgreSQL**
+- **Authentication**: Aadhaar-based OTP verification, signed JSON Web Tokens (JWT), role-level authorization middleware
+- **Real-time**: WebSockets (`ws`) for live audio transcript streaming and status updates
+- **AI Providers**:
+  - **Google Gemini** (`@google/genai`): Clinical reasoning, SOAP note generation, patient summaries
+  - **xAI Grok**: Secondary LLM integration for medical inference
+  - **OpenAI**: Embeddings and speech processing
+  - **Pinecone**: High-dimensional vector search for ICD-10 medical knowledge retrieval
+- **Speech-to-Text**: Whisper API + local Python transcription worker (`transcribe.py`)
+- **Storage**: Cloudinary for medical media and attachments
+- **Standards & Security**: FHIR R4 Bundle Builder, HIPAA audit logging, PHI field encryption
+
+### Cloud & DevOps Infrastructure
+- **Cloud Provider**: Amazon Web Services (AWS `ap-south-1`)
+- **Compute**: Amazon EC2 (Amazon Linux 2023)
+- **Database**: PostgreSQL 16 (AWS RDS in private subnet; Docker container for local dev)
+- **Process Manager**: PM2 (`sarvavaidya-api`) with automatic restarts and memory limits
+- **Web Server & Reverse Proxy**: Nginx (serves static Vite bundle + proxies `/api` and `/ws`)
+- **Provisioning**: Terraform + Ansible Automation
 
 ---
 
@@ -105,619 +136,569 @@ The application is a **pnpm monorepo** with three packages:
 ```
 Local-EHR/
 ├── apps/
-│   ├── server/                          # ── Backend API ──
+│   ├── server/                          # ── Express 5 API Server ──
 │   │   ├── prisma/
-│   │   │   ├── schema.prisma            # Database schema (SQLite)
-│   │   │   ├── migrations/              # Prisma migration history
-│   │   │   └── dev.db                   # Local SQLite database file
+│   │   │   └── schema.prisma            # PostgreSQL Prisma schema (10 models, 7 enums)
 │   │   ├── src/
-│   │   │   ├── index.ts                 # Express app entry point, route mounting, server startup
-│   │   │   ├── seed.ts                  # Database seeder (demo users, patients, appointments)
-│   │   │   ├── swagger.ts               # OpenAPI/Swagger spec (auto-served at /docs)
+│   │   │   ├── index.ts                 # Express entry point, route mounting & WS server
+│   │   │   ├── seed.ts                  # Database seeding script (Doctors, Nurses, Patients)
+│   │   │   ├── swagger.ts               # Swagger OpenAPI documentation
 │   │   │   ├── lib/
 │   │   │   │   └── prisma.ts            # Singleton Prisma client instance
 │   │   │   ├── middleware/
-│   │   │   │   └── auth.middleware.ts    # JWT verification + role-based access control
+│   │   │   │   └── auth.middleware.ts    # JWT verification & requireRole() guards
 │   │   │   ├── routes/
-│   │   │   │   ├── auth.routes.ts       # Aadhaar OTP login, onboarding, profile CRUD
-│   │   │   │   ├── patient.routes.ts    # Patient CRUD, search, status management, revisits
-│   │   │   │   ├── consult.routes.ts    # Consultation lifecycle (create → SOAP → finalize)
-│   │   │   │   ├── ai.routes.ts         # AI analysis, transcription, summarization
-│   │   │   │   ├── suggest.routes.ts    # Disease suggestion pipeline (symptom → ICD → treatment)
-│   │   │   │   ├── appointment.routes.ts# Appointment booking, listing, status updates
-│   │   │   │   ├── followup.routes.ts   # Follow-up scheduling and tracking
-│   │   │   │   ├── followup-call.routes.ts  # Follow-up call management (REST)
-│   │   │   │   ├── followup-call.ws.ts  # Follow-up call real-time WebSocket handler
-│   │   │   │   ├── fhir.routes.ts       # FHIR R4 bundle export endpoint
-│   │   │   │   ├── stats.routes.ts      # Dashboard statistics (nurse/doctor/patient)
-│   │   │   │   └── upload.routes.ts     # Image upload (Cloudinary)
+│   │   │   │   ├── auth.routes.ts       # Aadhaar OTP auth, onboarding, profile
+│   │   │   │   ├── patient.routes.ts    # Patient registration, search, vitals, revisits
+│   │   │   │   ├── consult.routes.ts    # Consultation lifecycle (create, SOAP, finalize)
+│   │   │   │   ├── ai.routes.ts         # Clinical AI analysis & patient summaries
+│   │   │   │   ├── suggest.routes.ts    # Disease suggestion pipeline (symptom -> ICD)
+│   │   │   │   ├── appointment.routes.ts# Appointment scheduling & status updates
+│   │   │   │   ├── followup.routes.ts   # Follow-up records management
+│   │   │   │   ├── followup-call.routes.ts # AI follow-up call management
+│   │   │   │   ├── followup-call.ws.ts  # Real-time WebSocket for live transcripts
+│   │   │   │   ├── fhir.routes.ts       # FHIR R4 bundle export endpoints
+│   │   │   │   ├── stats.routes.ts      # Role-specific dashboard statistics
+│   │   │   │   └── upload.routes.ts     # Media upload (Cloudinary)
 │   │   │   ├── services/
-│   │   │   │   ├── suggest-pipeline.ts  # Multi-stage AI suggestion engine
-│   │   │   │   ├── vector-store.ts      # Pinecone/OpenAI vector embeddings & search
-│   │   │   │   ├── external-api-search.ts # External medical API integration
-│   │   │   │   ├── llm-rerank.ts        # LLM-based result reranking
-│   │   │   │   ├── entity-extraction.ts # Medical entity extraction from text
-│   │   │   │   ├── confidence-gate.ts   # Confidence threshold filtering
-│   │   │   │   ├── response-generator.ts# AI response formatting
-│   │   │   │   ├── followup-call.service.ts # Follow-up call orchestration with Gemini Live
-│   │   │   │   ├── followup-scheduler.ts# Automated follow-up scheduling (interval-based)
-│   │   │   │   ├── session-store.ts     # In-memory session store for AI pipeline
-│   │   │   │   ├── hipaa-logger.ts      # HIPAA-compliant audit logging
-│   │   │   │   ├── phi-encryption.ts    # PHI encryption/decryption utilities
-│   │   │   │   └── transcribe.py        # Python speech-to-text script (Whisper/Qwen2)
+│   │   │   │   ├── suggest-pipeline.ts  # Multi-stage AI disease suggestion engine
+│   │   │   │   ├── vector-store.ts      # Pinecone/OpenAI vector retrieval
+│   │   │   │   ├── followup-call.service.ts # Automated AI patient calls
+│   │   │   │   ├── followup-scheduler.ts# Autonomous follow-up scheduler
+│   │   │   │   ├── hipaa-logger.ts      # Audit logging for HIPAA compliance
+│   │   │   │   └── phi-encryption.ts    # PHI data encryption at rest
 │   │   │   └── utils/
-│   │   │       ├── medical-prompts.ts   # System prompts for medical AI analysis
-│   │   │       ├── followup-prompts.ts  # System prompts for follow-up AI calls
-│   │   │       ├── fhir-bundle-builder.ts # FHIR R4 Bundle construction utilities
-│   │   │       ├── fhir-mapper.ts       # Internal schema → FHIR resource mapper
-│   │   │       └── openai-helpers.ts    # OpenAI client initialization helpers
-│   │   ├── .env.example                 # Environment variable template
+│   │   │       ├── medical-prompts.ts   # Clinical system prompts
+│   │   │       ├── followup-prompts.ts  # AI call system prompts
+│   │   │       └── fhir-bundle-builder.ts # FHIR R4 Bundle generators
+│   │   ├── .env.example                 # Backend environment variable template
 │   │   ├── package.json
 │   │   └── tsconfig.json
 │   │
-│   └── web/                             # ── Frontend SPA ──
+│   └── web/                             # ── React 19 Frontend SPA ──
 │       ├── src/
-│       │   ├── App.tsx                  # Root router — all page routes defined here
-│       │   ├── main.tsx                 # ReactDOM entry point
-│       │   ├── index.css                # Global styles (Tailwind directives + custom)
-│       │   ├── vite-env.d.ts            # Vite type declarations
+│       │   ├── App.tsx                  # Root router with RoleGuard route groups
+│       │   ├── main.tsx                 # React DOM mount point
 │       │   ├── components/
-│       │   │   ├── auth/                # Login UI (AuthLayout, RoleSelector)
-│       │   │   ├── doctor/              # Doctor-specific components (10 files)
-│       │   │   ├── nurse/               # Nurse-specific components (6 files)
-│       │   │   ├── patient/             # Patient-specific components (2 files)
-│       │   │   ├── shared/              # Cross-role components (16 files)
-│       │   │   └── ui/                  # Base UI primitives (13 shadcn/ui components)
-│       │   ├── hooks/                   # Custom React hooks (12 files)
+│       │   │   ├── auth/                # Login and Aadhaar UI
+│       │   │   ├── doctor/              # Doctor consultation and diagnosis views
+│       │   │   ├── nurse/               # Nurse triage, vitals entry, intake views
+│       │   │   ├── patient/             # Patient records & consultation history views
+│       │   │   ├── shared/
+│       │   │   │   ├── AuthGuard.tsx    # Unauthenticated user redirect to /signin
+│       │   │   │   ├── RoleGuard.tsx    # Strict role verification & redirect guard
+│       │   │   │   ├── RoleRedirect.tsx # Catch-all role redirector
+│       │   │   │   ├── Layout.tsx       # Main app layout with role-aware navigation
+│       │   │   │   └── Sidebar.tsx      # Role-filtered navigation sidebar
+│       │   │   └── ui/                  # Shadcn-inspired UI components (Radix + Tailwind)
 │       │   ├── pages/
-│       │   │   ├── auth/                # AadhaarLoginPage
-│       │   │   ├── doctor/              # 7 pages (Dashboard, Consult, History, etc.)
-│       │   │   ├── nurse/               # 4 pages (Dashboard, AddPatient, EditPatient, History)
-│       │   │   ├── patient/             # 2 pages (Portal, History)
-│       │   │   └── shared/              # 3 pages (FollowUpList, Settings, PublicVideoRoom)
-│       │   ├── services/
-│       │   │   └── api.ts               # Axios API client (all backend endpoints)
-│       │   ├── store/
-│       │   │   └── index.ts             # Zustand auth store
-│       │   └── lib/
-│       │       ├── mock-data.ts         # UI development mock data
-│       │       └── utils.ts             # cn() utility (clsx + tailwind-merge)
-│       ├── public/                      # Static assets
-│       ├── .env.example                 # Frontend env template (ZegoCloud keys)
-│       ├── components.json              # shadcn/ui configuration
-│       ├── tailwind.config.ts           # Tailwind theme customization
-│       ├── vite.config.ts               # Vite config (proxy, aliases)
-│       ├── postcss.config.js
+│       │   │   ├── auth/AadhaarLoginPage.tsx
+│       │   │   ├── doctor/              # Doctor Dashboard, Consult, Appointments, History
+│       │   │   ├── nurse/               # Nurse Dashboard, AddPatient, EditPatient, History
+│       │   │   ├── patient/             # Patient Portal & Consultation History
+│       │   │   └── shared/              # Video Call, Settings, Follow-ups
+│       │   ├── services/api.ts          # Axios client configured for all backend endpoints
+│       │   └── store/index.ts           # Zustand auth & session store
+│       ├── vite.config.ts               # Vite configuration with API & WS proxying
 │       └── package.json
 │
 ├── packages/
 │   └── shared-types/                    # ── Shared Type Definitions ──
-│       ├── src/
-│       │   └── index.ts                 # All TypeScript interfaces & type aliases
-│       ├── package.json
-│       └── tsconfig.json
+│       ├── src/index.ts                 # Enums, DTOs, and models shared across server & web
+│       └── package.json
 │
-├── docker-compose.yml                   # PostgreSQL 16 (optional, for production)
-├── migrateToSqlite.js                   # Script to convert Prisma schema from PG → SQLite
-├── pnpm-workspace.yaml                  # Monorepo workspace definition
-├── tsconfig.base.json                   # Shared TypeScript compiler options
-├── package.json                         # Root package (scripts, dev dependencies)
-├── pnpm-lock.yaml
-└── .gitignore
+├── terraform/                           # ── AWS Infrastructure as Code ──
+│   ├── vpc.tf                           # VPC, Public & Private Subnets, Internet Gateway
+│   ├── ec2.tf                           # EC2 instance, Elastic IP, Security Groups, IAM
+│   ├── rds.tf                           # RDS PostgreSQL subnet groups & database instance
+│   └── outputs.tf                       # Output variables (Public IP, RDS Endpoint)
+│
+├── ansible/                             # ── Server Configuration & Deployment ──
+│   ├── inventory/hosts.yml              # Target host definitions (15.206.15.61)
+│   ├── playbooks/
+│   │   ├── setup.yml                    # Initial server setup (Node, pnpm, Nginx, PM2)
+│   │   └── deploy.yml                   # Code pull, build, migration, PM2 reload
+│   └── roles/app/tasks/main.yml         # Core deployment tasks
+│
+├── deploy_sarvavaidya.sh                # End-to-end AWS deployment script (Bash/WSL)
+├── deploy_sarvavaidya.ps1               # End-to-end AWS deployment script (PowerShell)
+├── docker-compose.yml                   # Local PostgreSQL 16 container for development
+├── docker-compose.prod.yml              # Containerized production stack for local simulation
+└── package.json                         # Monorepo root scripts & pnpm workspace config
 ```
 
 ---
 
-## Prerequisites
+## Role-Based Access Control & Routing
 
-| Tool | Version | Notes |
+The system enforces strict role isolation across all tiers (Database, Backend API, and Frontend Routing). A user logged in under one role cannot access screens or actions intended for another role.
+
+### Frontend Route Isolation (`RoleGuard`)
+
+Routes in `apps/web/src/App.tsx` are wrapped with `RoleGuard` components:
+
+```tsx
+// Doctor routes can ONLY be accessed by users with role "DOCTOR"
+<Route element={<RoleGuard allowedRoles={["DOCTOR"]} />}>
+  <Route path="/doctor" element={<DoctorDashboard />} />
+  <Route path="/doctor/consult/:patientId" element={<ConsultPage />} />
+  ...
+</Route>
+```
+
+If a user navigates to an unauthorized route (e.g., a patient manually typing `/doctor` or `/nurse`), `RoleGuard` immediately intercepts the request and redirects them back to their home portal (`/patient`, `/doctor`, or `/nurse`).
+
+| Role | Landing Route | Accessible Pages |
 |---|---|---|
-| **Node.js** | ≥ 18 | ES2022 target |
-| **pnpm** | ≥ 10.17 | Specified in `packageManager` field |
-| **Python 3** | ≥ 3.9 | Only needed for audio transcription features |
-| **Docker** | Latest | Only if using PostgreSQL (optional for dev) |
+| **`DOCTOR`** | `/doctor` | Doctor Dashboard, Patient Consultation (`/doctor/consult/:id`), Appointment Scheduling, Video Consultations (`/doctor/video-call/:id`), Patient Detail, Consultation History, Follow-Up Management |
+| **`NURSE`** | `/nurse` | Nurse Dashboard, Patient Intake & Registration (`/nurse/add-patient`), Edit Patient & Vitals (`/nurse/edit-patient/:id`), Patient Triage History, Follow-Up List |
+| **`PATIENT`** | `/patient` | Patient Health Portal, Personal Medical & Prescription History, Profile Settings |
+| **Public** | `/signin` | Aadhaar OTP Login, Video Room Join (`/video-room/:roomId`) |
+
+### Backend API Protection
+
+Backend routes enforce roles using `authMiddleware` and `requireRole(...)`:
+- All patient modification and consultation endpoints require valid JWTs.
+- Clinical AI analysis (`/api/ai/*`) and suggestion pipelines require `requireRole("DOCTOR")`.
+- Patient search and triage endpoints accept `DOCTOR` and `NURSE` roles.
 
 ---
 
-## Getting Started
+## Demo Credentials
 
-### 1. Clone & Install
+The database comes pre-seeded with accounts for all roles. In development and demo environments, OTP verification is simulated—**any 6-digit OTP (e.g., `123456`) will successfully authenticate**.
+
+| Role | Name | Aadhaar Number | Simulated OTP | Default Dashboard |
+|---|---|---|---|---|
+| **Doctor** | Dr. Arun Sharma | `111111111111` | Any 6 digits (e.g. `123456`) | `/doctor` |
+| **Nurse** | Nurse Priya Patel | `000000000000` | Any 6 digits (e.g. `123456`) | `/nurse` |
+| **Patient** | Rahul Mehta | `222222222222` | Any 6 digits (e.g. `123456`) | `/patient` |
+| **Patient** | Sneha Iyer | `333333333333` | Any 6 digits (e.g. `123456`) | `/patient` |
+
+---
+
+## Getting Started (Local Development)
+
+### 1. Prerequisites
+- **Node.js**: `v20.x` or higher
+- **pnpm**: `v10.x` or higher (`npm install -g pnpm`)
+- **Docker**: For running local PostgreSQL 16
+- **Git**
+
+### 2. Clone and Install Dependencies
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/RamanRed/Local-EHR.git
 cd Local-EHR
 pnpm install
 ```
 
-### 2. Configure Environment
+### 3. Start Local PostgreSQL Database
+
+A lightweight PostgreSQL 16 container is configured in `docker-compose.yml`:
 
 ```bash
-# Server
-cp apps/server/.env.example apps/server/.env
-# Edit apps/server/.env with your API keys
+docker compose up -d
+```
+*This starts PostgreSQL on port `5435` with database `sarvavaidya`.*
 
-# Web (only needed for video calls)
+### 4. Configure Environment Variables
+
+```bash
+# Backend Environment
+cp apps/server/.env.example apps/server/.env
+
+# Frontend Environment (optional, for ZegoCloud video calls)
 cp apps/web/.env.example apps/web/.env
 ```
 
-### 3. Initialize Database
-
-```bash
-# Generate Prisma client
-cd apps/server
-pnpm db:generate
-
-# Push schema to SQLite (creates dev.db)
-pnpm db:push
-
-# Seed demo data
-pnpm db:seed
+Ensure `apps/server/.env` has the local database connection string:
+```env
+DATABASE_URL="postgresql://sarvavaidya:sarvavaidya@localhost:5435/sarvavaidya"
+JWT_SECRET="local-dev-jwt-secret-at-least-32-chars-long"
+PORT=3001
+NODE_ENV=dev
+FRONTEND_URL=http://localhost:5173
 ```
 
-### 4. Run Development Servers
+### 5. Initialize the Database
 
 ```bash
-# From the root directory — starts both server and web concurrently
+cd apps/server
+
+# Generate Prisma Client
+pnpm db:generate
+
+# Sync schema with PostgreSQL
+pnpm db:push
+
+# Seed demo users and patients
+pnpm db:seed
+
+cd ../..
+```
+
+### 6. Launch Development Servers
+
+Run both backend and frontend concurrently from the workspace root:
+
+```bash
 pnpm dev
 ```
 
-| Service | URL |
+| Service | Address |
 |---|---|
-| Frontend | http://localhost:5173 |
-| Backend API | http://localhost:3001 |
-| Swagger Docs | http://localhost:3001/docs |
-| Health Check | http://localhost:3001/api/health |
-
-### 5. Demo Login Credentials (Aadhaar Numbers)
-
-| Role | Aadhaar Number |
-|---|---|
-| Doctor | `111111111111` |
-| Nurse | `000000000000` |
-| Patient | `222222222222` or `333333333333` |
-
-> **Note**: The app uses a simulated Aadhaar OTP flow. Any 6-digit OTP will work in dev mode.
+| **Frontend Web App** | [http://localhost:5173](http://localhost:5173) |
+| **Backend API** | [http://localhost:3001](http://localhost:3001) |
+| **Interactive API Docs (Swagger)** | [http://localhost:3001/docs](http://localhost:3001/docs) |
+| **Health Check** | [http://localhost:3001/api/health](http://localhost:3001/api/health) |
 
 ---
 
 ## Environment Variables
 
-### Server (`apps/server/.env`)
+### Backend (`apps/server/.env`)
+
+| Variable | Required | Description | Default / Example |
+|---|---|---|---|
+| `DATABASE_URL` | ✅ Yes | PostgreSQL connection string | `postgresql://sarvavaidya:sarvavaidya@localhost:5435/sarvavaidya` |
+| `JWT_SECRET` | ✅ Yes | Secret key for signing JWT tokens | Random 64-char string |
+| `PORT` | ❌ No | Server port | `3001` |
+| `NODE_ENV` | ❌ No | Environment mode (`dev` / `production`) | `dev` |
+| `FRONTEND_URL` | ❌ No | Allowed CORS origin | `http://localhost:5173` |
+| `APP_URL` | ❌ No | Base URL for video links generated in seed/consults | `http://15.206.15.61` |
+| `GEMINI_API_KEY` | ⚡ AI | Google Gemini API key for clinical AI & summaries | [Google AI Studio](https://aistudio.google.com/) |
+| `GROK_API_KEY` | ⚡ AI | xAI Grok API key (alternative reasoning model) | [xAI Console](https://console.x.ai/) |
+| `GROK_MODEL` | ❌ No | Grok model name | `grok-beta` |
+| `OPENAI_API_KEY` | ⚡ AI | OpenAI API key for embeddings | `sk-...` |
+| `PINECONE_API_KEY` | ⚡ AI | Pinecone vector DB key for medical search | — |
+| `PINECONE_INDEX` | ⚡ AI | Pinecone index name | `quickstart` |
+| `PINECONE_NAMESPACE` | ⚡ AI | Pinecone namespace | `medical_ai_diseases` |
+| `CLOUDINARY_CLOUD_NAME` | ❌ No | Cloudinary cloud name for file uploads | — |
+| `CLOUDINARY_API_KEY` | ❌ No | Cloudinary API key | — |
+| `CLOUDINARY_API_SECRET` | ❌ No | Cloudinary API secret | — |
+
+### Frontend (`apps/web/.env`)
 
 | Variable | Required | Description |
 |---|---|---|
-| `DATABASE_URL` | ✅ | Prisma connection string. Default: `file:./prisma/dev.db` (SQLite) |
-| `JWT_SECRET` | ✅ | Secret for signing JWT tokens |
-| `PORT` | ❌ | Server port (default: `3001`) |
-| `NODE_ENV` | ❌ | `dev` or `production` |
-| `GEMINI_API_KEY` | ⚡ | Google Gemini API key (required for AI features) |
-| `OPENAI_API_KEY` | ⚡ | OpenAI key (vector store embeddings) |
-| `OPENAI_API_SPEECH_KEY` | ⚡ | OpenAI key (speech-to-text) |
-| `OPENAI_VECTOR_STORE_ID` | ⚡ | OpenAI Vector Store ID |
-| `PINECONE_API_KEY` | ⚡ | Pinecone API key (vector search) |
-| `PINECONE_INDEX` | ⚡ | Pinecone index name (default: `quickstart`) |
-| `PINECONE_NAMESPACE` | ⚡ | Pinecone namespace (default: `medical_ai_diseases`) |
-| `PINECONE_DIMENSION` | ⚡ | Embedding dimension (default: `1536`) |
-| `HF_API_TOKEN` | ❌ | Hugging Face API token |
-| `CLOUDINARY_CLOUD_NAME` | ❌ | Cloudinary cloud name (image uploads) |
-| `CLOUDINARY_API_KEY` | ❌ | Cloudinary API key |
-| `CLOUDINARY_API_SECRET` | ❌ | Cloudinary API secret |
-| `PYTHON_EXECUTABLE` | ❌ | Path to Python binary (for transcription) |
-| `OLLAMA_AUDIO_MODEL` | ❌ | Ollama audio model (default: `qwen2-audio`) |
-| `OLLAMA_WHISPER_MODEL` | ❌ | Ollama whisper model |
-| `FRONTEND_URL` | ❌ | Frontend URL (for dev tunnel / CORS) |
-
-> ⚡ = Required for AI/ML features to work; app runs without them but AI endpoints will fail.
-
-### Web (`apps/web/.env`)
-
-| Variable | Required | Description |
-|---|---|---|
-| `VITE_ZEGOCLOUD_APP_ID` | ❌ | ZegoCloud App ID (video calls) |
-| `VITE_ZEGOCLOUD_SERVER_SECRET` | ❌ | ZegoCloud Server Secret |
+| `VITE_ZEGOCLOUD_APP_ID` | ❌ No | ZegoCloud App ID for WebRTC video consultations |
+| `VITE_ZEGOCLOUD_SERVER_SECRET` | ❌ No | ZegoCloud Server Secret |
 
 ---
 
-## Database
+## Database Management
 
-### Current: SQLite (Local Development)
+The database layer is powered by **Prisma ORM** targeting **PostgreSQL 16**.
 
-The app uses **SQLite** via Prisma for zero-config local development. The database file lives at `apps/server/prisma/dev.db`.
+### Prisma Models (10 Core Models)
 
-### Production-Ready: PostgreSQL
+1. **`User`**: Doctor, Nurse, or Patient auth record with Aadhaar identity, name, contact, and specialization.
+2. **`Patient`**: Clinical patient record with demographic information, blood group, triage status, and nurse attribution.
+3. **`Vitals`**: Comprehensive vital snapshot (BP, heart rate, temperature, SpO2, respiratory rate, weight, height).
+4. **`Consult`**: Doctor clinical encounter containing SOAP notes, diagnosis codes, symptoms, prescriptions, and follow-up directives.
+5. **`Condition`**: ICD-10 coded medical conditions linked to patients and consultations.
+6. **`Medication`**: Prescribed pharmaceuticals with dosage, frequency, duration, and instructions.
+7. **`Appointment`**: Scheduled clinic visits, video sessions, or automated follow-up calls.
+8. **`FollowUp`**: Tracking directives between doctor encounters.
+9. **`FollowUpCall`**: State and audio transcription records of automated AI phone interactions.
+10. **`AuditLog`**: Immutable HIPAA audit log of sensitive medical access events.
 
-A `docker-compose.yml` is provided for PostgreSQL:
+### Essential Database Commands
+
+Execute within `apps/server`:
 
 ```bash
-docker compose up -d
-# Then update DATABASE_URL in .env:
-# DATABASE_URL="postgresql://sarvavaidya:sarvavaidya@localhost:5435/sarvavaidya"
+# Push schema updates directly to database (used in development and on EC2)
+pnpm db:push
+
+# Generate or update Prisma client
+pnpm db:generate
+
+# Seed the database with fresh demo doctors, nurses, and patients
+pnpm db:seed
+
+# Inspect database using Prisma Studio GUI
+npx prisma studio
 ```
 
-> **Note**: Use `migrateToSqlite.js` at the root to convert the Prisma schema between PostgreSQL enums/arrays and SQLite-compatible strings. Run it **before** `prisma generate` when switching databases.
+---
 
-### Schema Overview (10 Models)
+## Production Deployment (AWS EC2 + RDS)
 
-| Model | Purpose | Key Relations |
-|---|---|---|
-| `User` | Authentication entity (Doctor / Nurse / Patient) | Identified by unique Aadhaar number |
-| `Patient` | Clinical patient record | → Vitals, Consults, Conditions, Medications, Appointments, FollowUps |
-| `Vitals` | Patient vital signs snapshot | → Patient (1:1) |
-| `Consult` | Doctor consultation record (SOAP notes) | → Patient, → Medications, → FollowUpCalls |
-| `Condition` | ICD-coded clinical conditions | → Patient |
-| `Medication` | Prescribed medications | → Patient, → Consult |
-| `Appointment` | Scheduled appointments (in-clinic, video, follow-up call) | → Patient |
-| `FollowUp` | Follow-up tracking between consults | → Patient, → Consults (fulfilled by) |
-| `FollowUpCall` | AI-powered follow-up call records | → Patient, → Consult |
-| `AuditLog` | HIPAA-compliant audit trail | Standalone (userId reference) |
+The production infrastructure is automated using Terraform and Ansible:
 
-### Key Enums
+### Infrastructure Architecture
+- **VPC**: `10.0.0.0/16` with public subnets (EC2) and private subnets (RDS).
+- **EC2 Instance**: Hosts the Nginx web server and PM2 API service.
+- **RDS PostgreSQL**: Dedicated PostgreSQL 16 database running in private subnets, accessible only from the EC2 security group.
+- **AWS SSM Parameter Store**: Secure storage for `DATABASE_URL`, `JWT_SECRET`, and API keys (`/sarvavaidya/dev/*`).
 
-| Enum | Values |
-|---|---|
-| `Role` | `NURSE`, `DOCTOR`, `PATIENT` |
-| `PatientStatus` | `WAITING`, `IN_CONSULT`, `UNDER_TREATMENT`, `CURED`, `EMERGENCY` |
-| `FollowUpStatus` | `PENDING`, `COMPLETED`, `CANCELLED` |
-| `AppointmentType` | `followUpCall`, `inClinic`, `videoConsultation` |
-| `AppointmentStatus` | `pending`, `confirmed`, `completed`, `cancelled` |
-| `FollowUpCallStatus` | `scheduled`, `in_progress`, `completed`, `failed`, `cancelled` |
-| `UrgencyLevel` | `none`, `low`, `medium`, `high`, `critical` |
+### Deploying via Script
 
-### Database Commands
+From the project root on a machine with AWS CLI and Terraform configured:
 
 ```bash
-cd apps/server
+# Run the automated deployment script
+chmod +x deploy_sarvavaidya.sh
+./deploy_sarvavaidya.sh dev
+```
 
-pnpm db:generate     # Generate Prisma client from schema
-pnpm db:push         # Push schema to database (no migration)
-pnpm db:migrate      # Create and run migration
-pnpm db:seed         # Seed demo data (tsx src/seed.ts)
+Or using PowerShell on Windows:
+```powershell
+.\deploy_sarvavaidya.ps1 -Environment dev
+```
+
+---
+
+## Production Runbook & Maintenance (EC2)
+
+This section details standard operational tasks on the live EC2 server (`15.206.15.61`).
+
+### 1. Connecting to the EC2 Server via SSH
+
+The SSH key is `sarvavaidya-keypair.pem`.
+
+> [!IMPORTANT]
+> **Windows / WSL SSH Permission Fix**:
+> In WSL, files on `/mnt/c/` have default `0777` permissions which SSH rejects. Copy the key to your home directory first:
+> ```bash
+> cp /mnt/c/Users/raman/Desktop/trainer\ module/Local-EHR/sarvavaidya-keypair.pem ~/.ssh/
+> chmod 600 ~/.ssh/sarvavaidya-keypair.pem
+> ```
+
+Connect via SSH:
+```bash
+ssh -i ~/.ssh/sarvavaidya-keypair.pem ec2-user@15.206.15.61
+```
+
+---
+
+### 2. Pulling Code and Updating the Live App
+
+When new code is pushed to `master`:
+
+```bash
+# Navigate to deployment directory
+cd /opt/sarvavaidya
+
+# Pull latest commits
+sudo -u app git pull origin master
+
+# Rebuild frontend with memory allocation limit
+sudo -u app NODE_OPTIONS="--max-old-space-size=896" pnpm build
+
+# Restart the backend API process
+sudo -u app pm2 restart sarvavaidya-api
+```
+
+---
+
+### 3. Resetting and Reseeding the Database on EC2
+
+To wipe the database, sync the schema, and restore fresh demo accounts:
+
+```bash
+cd /opt/sarvavaidya/apps/server
+
+# Reset schema and wipe all tables
+sudo -u app npx prisma db push --force-reset --accept-data-loss
+
+# Seed default doctor, nurse, and patient records
+sudo -u app npx tsx src/seed.ts
+```
+
+---
+
+### 4. Service Monitoring and Diagnostics
+
+```bash
+# Check PM2 backend status
+sudo -u app pm2 status
+
+# View live API logs
+sudo -u app pm2 logs sarvavaidya-api --lines 100
+
+# Restart PM2 process
+sudo -u app pm2 restart sarvavaidya-api
+
+# Check Nginx status & reload configuration
+sudo systemctl status nginx
+sudo systemctl reload nginx
+
+# Check Nginx access/error logs
+sudo tail -f /var/log/nginx/error.log
+sudo tail -f /var/log/nginx/access.log
 ```
 
 ---
 
 ## API Reference
 
-All endpoints are served under `/api`. Protected routes require `Authorization: Bearer <jwt>`.
+All backend API routes are prefixed with `/api`. Protected routes require a Bearer token in the `Authorization` header: `Authorization: Bearer <jwt_token>`.
 
-Interactive Swagger docs available at **http://localhost:3001/docs** when the server is running.
+Interactive OpenAPI documentation is hosted live at **`/docs`**.
 
 ### Authentication (`/api/auth`)
-
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
-| `POST` | `/auth/aadhaar/send-otp` | ❌ | Send OTP to Aadhaar number |
-| `POST` | `/auth/aadhaar/verify-otp` | ❌ | Verify OTP → returns JWT or `needsOnboarding` |
-| `POST` | `/auth/aadhaar/onboard` | ❌ | Complete onboarding for new users |
-| `GET` | `/auth/me` | ✅ | Get current authenticated user profile |
-| `PATCH` | `/auth/profile` | ✅ | Update user profile |
+| `POST` | `/auth/aadhaar/send-otp` | Public | Initiates OTP delivery to the given Aadhaar number |
+| `POST` | `/auth/aadhaar/verify-otp` | Public | Validates 6-digit OTP; issues JWT token or flags onboarding |
+| `POST` | `/auth/aadhaar/onboard` | Public | Completes profile registration for newly registered users |
+| `GET` | `/auth/me` | User | Retrieves the profile of the currently logged-in user |
+| `PATCH` | `/auth/profile` | User | Updates phone, email, photo, or profile details |
 
-### Patients (`/api/patients`)
-
+### Patient Records (`/api/patients`)
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
-| `GET` | `/patients` | ✅ | List patients (optional `?status=` filter) |
-| `GET` | `/patients/:id` | ✅ | Get patient by ID (includes vitals) |
-| `GET` | `/patients/search?aadhaar=` | ✅ | Search by Aadhaar (checks Patient + User tables) |
-| `POST` | `/patients` | ✅ | Create patient with optional vitals |
-| `PATCH` | `/patients/:id` | ✅ | Update patient info and vitals |
-| `PATCH` | `/patients/:id/status` | ✅ | Update patient status |
-| `POST` | `/patients/:id/revisit` | ✅ | Re-register returning patient with fresh vitals |
-| `GET` | `/patients/:patientId/consults` | ✅ | Get all consults for a patient |
+| `GET` | `/patients` | Staff | Lists patients (filterable by `?status=WAITING`, etc.) |
+| `GET` | `/patients/:id` | Staff | Retrieves complete patient record including latest vitals |
+| `GET` | `/patients/search?aadhaar=` | Staff | Fast search across patients and registered user accounts |
+| `POST` | `/patients` | Staff | Registers a new patient with optional baseline vitals |
+| `PATCH` | `/patients/:id` | Staff | Modifies patient demographics and vitals |
+| `PATCH` | `/patients/:id/status` | Staff | Updates workflow status (`WAITING`, `IN_CONSULT`, etc.) |
+| `POST` | `/patients/:id/revisit` | Staff | Registers a returning patient visit with newly captured vitals |
+| `GET` | `/patients/:patientId/consults`| Staff | Fetches complete clinical consultation history |
 
 ### Consultations (`/api/consults`)
-
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
-| `POST` | `/consults` | ✅ | Create new consultation |
-| `GET` | `/consults` | ✅ | List doctor's consultations |
-| `GET` | `/consults/:id` | ✅ | Get consultation by ID |
-| `PATCH` | `/consults/:id` | ✅ | Update SOAP notes, ICD codes, prescription, etc. |
+| `POST` | `/consults` | Doctor | Initiates an encounter for a waiting patient |
+| `GET` | `/consults` | Doctor | Lists all encounters conducted by the requesting doctor |
+| `GET` | `/consults/:id` | Doctor | Retrieves consultation details, SOAP notes, and prescriptions |
+| `PATCH` | `/consults/:id` | Doctor | Updates SOAP notes, ICD codes, medications, and finalizes consult |
 
-### AI Endpoints (`/api/ai`) — Doctor-only
-
+### AI Clinical Decision Support (`/api/ai`)
+*Restricted to users with the `DOCTOR` role.*
 | Method | Endpoint | Description |
 |---|---|---|
-| `POST` | `/ai/analyze` | AI analysis of transcript + symptoms + vitals |
-| `POST` | `/ai/transcribe` | Speech-to-text (audio → text) |
-| `POST` | `/ai/summarize` | Generate patient-friendly summary from SOAP |
-| `POST` | `/ai/suggest` | Start disease suggestion pipeline from symptoms |
-| `POST` | `/ai/suggest/confirm` | Confirm ICD selection → get treatment plan |
+| `POST` | `/ai/analyze` | Generates SOAP notes, differential diagnoses, and prescriptions from visit transcript |
+| `POST` | `/ai/suggest` | Disease suggestion pipeline: Symptom extraction -> Vector search -> LLM reranking |
+| `POST` | `/ai/suggest/confirm` | Confirms selected ICD code and generates comprehensive clinical treatment plan |
+| `POST` | `/ai/summarize` | Translates technical SOAP notes into patient-friendly lay language instructions |
+| `POST` | `/ai/transcribe` | Transcribes audio recordings into structured medical transcripts |
 
-### Appointments (`/api/appointments`)
-
+### Appointments & Follow-ups
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
-| `POST` | `/appointments` | ✅ | Book appointment |
-| `GET` | `/appointments` | ✅ | List appointments (filterable by status, date) |
-| `GET` | `/appointments/my` | ✅ | Get current user's appointments |
-| `GET` | `/appointments/:id` | ✅ | Get appointment by ID |
-| `PATCH` | `/appointments/:id` | ✅ | Update appointment details |
-| `PATCH` | `/appointments/:id/status` | ✅ | Update appointment status |
+| `POST` | `/appointments` | User | Schedules an in-clinic, video, or call appointment |
+| `GET` | `/appointments` | Staff | Lists appointments with date and status filters |
+| `GET` | `/appointments/my` | User | Returns personal appointments for the active user |
+| `PATCH` | `/appointments/:id/status` | Staff | Updates appointment status (`confirmed`, `completed`, `cancelled`) |
+| `GET` | `/follow-ups` | Staff | Lists follow-up directives across all clinic patients |
+| `PATCH` | `/follow-ups/:id/status` | Staff | Closes or cancels follow-up tasks |
+| `GET` | `/followup-calls` | Staff | Lists autonomous AI follow-up phone interactions |
 
-### Follow-Ups (`/api/follow-ups`)
-
+### Standards & System
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
-| `GET` | `/follow-ups` | ✅ | List follow-ups (optional `?doctorId=`) |
-| `GET` | `/follow-ups/patient/:patientId` | ✅ | Get follow-ups for patient |
-| `GET` | `/follow-ups/:id` | ✅ | Get follow-up by ID |
-| `PATCH` | `/follow-ups/:id/status` | ✅ | Update follow-up status |
-
-### Follow-Up Calls (`/api/followup-calls`)
-
-| Method | Endpoint | Auth | Description |
-|---|---|---|---|
-| `GET` | `/followup-calls` | ✅ | List calls (filterable) |
-| `GET` | `/followup-calls/:id` | ✅ | Get call by ID |
-| `PATCH` | `/followup-calls/:id/cancel` | ✅ | Cancel a scheduled call |
-
-### WebSocket (`/ws/followup-call`)
-
-Real-time follow-up call events. Sends `LiveTranscriptEvent` messages:
-- `type: "transcript"` — live transcription updates
-- `type: "call_status"` — call status changes
-- `type: "summary"` — AI-generated call summary with structured findings
-
-### Other
-
-| Method | Endpoint | Auth | Description |
-|---|---|---|---|
-| `POST` | `/api/upload/image` | ✅ | Upload image (multipart → Cloudinary) |
-| `GET` | `/api/fhir/patient/:id/bundle` | ❌ | Export patient data as FHIR R4 Bundle |
-| `GET` | `/api/stats/nurse` | ✅ | Nurse dashboard stats |
-| `GET` | `/api/stats/doctor` | ✅ | Doctor dashboard stats |
-| `GET` | `/api/stats/patient` | ✅ | Patient dashboard stats |
-| `GET` | `/api/health` | ❌ | Health check |
+| `GET` | `/fhir/patient/:id/bundle` | Public | Generates and exports a standard FHIR R4 JSON Bundle |
+| `POST` | `/upload/image` | Staff | Uploads clinical images/attachments to Cloudinary |
+| `GET` | `/stats/nurse` | Nurse | Real-time statistics for nurse intake and triage |
+| `GET` | `/stats/doctor` | Doctor | Real-time statistics for completed consults and queue |
+| `GET` | `/stats/patient` | Patient | Patient statistics and upcoming appointments count |
+| `GET` | `/health` | Public | Health probe endpoint returning `{ "status": "ok" }` |
 
 ---
 
-## Frontend Application
+## AI & Clinical Intelligence Pipeline
 
-### Routing Structure
+SarvaVaidya implements a hybrid multi-LLM architecture designed for clinical precision:
 
-The app uses **role-based routing** with an `AuthGuard` wrapper. Users are redirected to their role-specific dashboard after login.
-
-| Route | Role | Page Component |
-|---|---|---|
-| `/signin` | Public | `AadhaarLoginPage` |
-| `/video-room/:roomId` | Public | `PublicVideoRoom` |
-| `/nurse` | Nurse | `NurseDashboard` |
-| `/nurse/add-patient` | Nurse | `AddPatient` |
-| `/nurse/edit-patient/:id` | Nurse | `EditPatient` |
-| `/nurse/history` | Nurse | `NurseHistory` |
-| `/nurse/follow-ups` | Nurse | `FollowUpList` |
-| `/nurse/settings` | Nurse | `SettingsPage` |
-| `/doctor` | Doctor | `DoctorDashboard` |
-| `/doctor/consult/:patientId` | Doctor | `ConsultPage` |
-| `/doctor/appointments` | Doctor | `DoctorAppointments` |
-| `/doctor/video-call/:id` | Doctor | `VideoCallPage` |
-| `/doctor/history` | Doctor | `DoctorHistory` |
-| `/doctor/patient/:patientId` | Doctor | `PatientDetailPage` |
-| `/doctor/follow-ups` | Doctor | `FollowUpList` |
-| `/doctor/follow-up-consult/:followUpId` | Doctor | `FollowUpConsultPage` |
-| `/doctor/settings` | Doctor | `SettingsPage` |
-| `/patient` | Patient | `PatientPortal` |
-| `/patient/history` | Patient | `PatientHistory` |
-| `/patient/settings` | Patient | `SettingsPage` |
-
-### State Management
-
-- **Auth Store** (`store/index.ts`): Zustand store holding `user`, `token`, `isLoading`. Token is persisted in `localStorage`.
-- **Server State**: No global cache (TanStack Query, SWR). Each page/hook fetches data independently via `api.ts`.
-
-### Custom Hooks
-
-| Hook | Purpose |
-|---|---|
-| `useAiAnalyze` | Trigger AI analysis of consultation data |
-| `useConsult` | Create/manage consultation lifecycle |
-| `useCreatePatient` | Patient creation form logic |
-| `usePatient` / `usePatients` | Fetch single/all patients |
-| `useDoctorHistory` | Fetch doctor's consultation history |
-| `useNurseHistory` | Fetch nurse-created patient history |
-| `usePatientHistory` | Fetch patient's own consultation history |
-| `useSpeechRecognition` | Browser + API speech-to-text integration |
-| `useStats` | Dashboard statistics for current role |
-| `useSuggestPipeline` | Multi-step AI disease suggestion flow |
-| `useUpdateProfile` | User profile update logic |
-
-### UI Component Library
-
-Base primitives in `components/ui/` follow **shadcn/ui** patterns (Radix + CVA + Tailwind):
-
-`alert` · `badge` · `button` · `card` · `dialog` · `form-field` · `input` · `label` · `password-input` · `separator` · `skeleton` · `table` · `textarea`
-
-### Vite Dev Server Proxy
-
-The frontend proxies API calls to the backend during development (defined in `vite.config.ts`):
-
+### 1. Multi-Stage Disease Suggestion Pipeline (RAG)
 ```
-/api/*  →  http://localhost:3001
-/ws/*   →  http://localhost:3001  (WebSocket)
+Free-text Symptoms & Clinical Observations
+                     │
+                     ▼
+        [ Medical Entity Extraction ]
+  Extracts anatomical sites, symptoms, and duration
+                     │
+                     ▼
+       [ Pinecone Vector Search (1536d) ]
+  Semantic retrieval of ICD-10 diagnostic embeddings
+                     │
+                     ▼
+         [ LLM Clinical Reranking ]
+  Gemini / Grok evaluates context relevance
+                     │
+                     ▼
+         [ Confidence Gating ]
+  Rejects low-confidence medical candidates
+                     │
+                     ▼
+  Ranked Differential Diagnoses + Treatment Protocols
 ```
+
+### 2. Autonomous Patient Follow-up Calls
+- An interval-based scheduler (`followup-scheduler.ts`) tracks scheduled patient follow-ups.
+- Gemini Live-driven agent (`followup-call.service.ts`) conducts structured check-in calls with patients to assess recovery progress, medication adherence, and adverse symptoms.
+- Real-time transcripts stream directly to the doctor's web interface over WebSockets (`/ws/followup-call`).
 
 ---
 
-## AI & ML Pipeline
+## Healthcare Compliance & Standards
 
-### 1. Medical Analysis (`/api/ai/analyze`)
-- **Input**: Transcript, symptoms, vitals, previous summary
-- **Engine**: Google Gemini
-- **Output**: SOAP notes, ICD-10 codes, prescription suggestions
-- **Prompts**: `utils/medical-prompts.ts`
+### FHIR R4 Bundle Export
+SarvaVaidya supports interoperable health data exchange adhering to the **HL7 FHIR Release 4** standard.
+- The `/api/fhir/patient/:id/bundle` endpoint constructs a complete FHIR `Bundle` of type `document`.
+- Automatically maps internal Prisma models into validated resources:
+  - `Patient` (demographics, Aadhaar national identifier)
+  - `Condition` (ICD-10 clinical diagnoses)
+  - `MedicationStatement` (prescribed drugs and dosages)
+  - `Encounter` (consultation sessions and doctor attributions)
 
-### 2. Disease Suggestion Pipeline (`/api/ai/suggest`)
-A multi-stage RAG (Retrieval-Augmented Generation) pipeline:
-
-```
-Symptoms Input
-     │
-     ▼
-┌─────────────────┐
-│ Entity Extraction│  ← Extract medical entities from free text
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│ Vector Search    │  ← Pinecone similarity search on medical knowledge base
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│ External API     │  ← Additional medical database lookups
-│ Search           │
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│ LLM Reranking    │  ← Gemini reranks results by clinical relevance
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│ Confidence Gate  │  ← Filter low-confidence results
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│ Response         │  ← Format final disease suggestions with ICD codes
-│ Generator        │
-└─────────────────┘
-```
-
-### 3. Speech-to-Text
-- **Primary**: OpenAI Whisper API
-- **Local fallback**: Python script (`transcribe.py`) using Ollama (Qwen2-Audio / Whisper)
-
-### 4. Automated Follow-Up Calls
-- **Scheduler**: `followup-scheduler.ts` runs on an interval, checks for due follow-ups
-- **AI Agent**: `followup-call.service.ts` uses Gemini to conduct automated patient check-in calls
-- **Real-time**: WebSocket streams live transcript and status updates to the doctor's UI
-- **Prompts**: `utils/followup-prompts.ts`
-
-### 5. Patient Summary Generation (`/api/ai/summarize`)
-- Takes SOAP notes + ICD codes → generates patient-friendly summary via Gemini
-
----
-
-## Healthcare Compliance
-
-### FHIR R4 Integration
-- **Export endpoint**: `GET /api/fhir/patient/:id/bundle`
-- **Bundle builder**: `utils/fhir-bundle-builder.ts` constructs compliant FHIR Bundles
-- **Mapper**: `utils/fhir-mapper.ts` converts internal Prisma models to FHIR resources (Patient, Condition, MedicationStatement, Encounter)
-
-### HIPAA Logging
-- `services/hipaa-logger.ts` provides structured audit logging for PHI access
-- `AuditLog` model tracks userId, action, resourceType, resourceId, and timestamp
+### HIPAA Audit Logging
+- Every read and write access to Protected Health Information (PHI) is immutably recorded in the `AuditLog` table via `hipaa-logger.ts`.
+- Captures timestamp, acting `userId`, `action` (`CREATE`, `READ`, `UPDATE`, `DELETE`), resource type, and record ID.
 
 ### PHI Encryption
-- `services/phi-encryption.ts` provides encryption/decryption utilities for sensitive patient data at rest
-
----
-
-## Key Design Decisions
-
-| Decision | Rationale |
-|---|---|
-| **SQLite default** | Zero-config local dev; script provided to migrate to PostgreSQL |
-| **Aadhaar-based auth** | Unique national ID for India — enables patient identification across visits |
-| **Simulated OTP** | Real Aadhaar OTP requires UIDAI API access; dev mode accepts any 6-digit code |
-| **No client-side caching** | Keeps state management simple; acceptable for low-traffic clinic use |
-| **Shared types package** | End-to-end type safety without code generation or runtime overhead |
-| **Prisma + SQLite enums** | Uses native enums in schema but stores as strings in SQLite via migration script |
-| **WebSocket for calls** | Follow-up calls need real-time transcript streaming; HTTP polling too slow |
-| **Express 5** | Latest Express with improved async error handling |
-| **Multi-AI provider** | Gemini for reasoning, OpenAI for embeddings/speech — best of both |
-
----
-
-## Common Modification Scenarios
-
-### Adding a New Database Model
-
-1. **Define** the model in `apps/server/prisma/schema.prisma`
-2. **Run** `pnpm db:migrate` (creates a migration)
-3. **Generate** the client: `pnpm db:generate`
-4. **Add types** to `packages/shared-types/src/index.ts`
-5. **Create route** file in `apps/server/src/routes/`
-6. **Mount route** in `apps/server/src/index.ts`
-7. **Add API functions** to `apps/web/src/services/api.ts`
-8. **Create hook** in `apps/web/src/hooks/`
-9. **Update** `migrateToSqlite.js` if the model uses enums or arrays
-
-### Adding a New Page
-
-1. **Create** component in `apps/web/src/pages/<role>/`
-2. **Add route** in `apps/web/src/App.tsx`
-3. **Add sidebar link** in `apps/web/src/components/shared/SidebarNav.tsx`
-
-### Adding a New AI Feature
-
-1. **Create** service in `apps/server/src/services/`
-2. **Add prompts** to `apps/server/src/utils/` (keep prompts separate from logic)
-3. **Create route** in `apps/server/src/routes/`
-4. **Mount** in `apps/server/src/index.ts` with `requireRole("DOCTOR")`
-5. **Add API function** to `apps/web/src/services/api.ts`
-6. **Create hook** in `apps/web/src/hooks/`
-
-### Adding a New UI Component
-
-1. **Base primitives**: Add to `apps/web/src/components/ui/` (follow shadcn/ui patterns)
-2. **Role-specific**: Add to `apps/web/src/components/<role>/`
-3. **Shared across roles**: Add to `apps/web/src/components/shared/`
-
-### Switching to PostgreSQL
-
-1. Start PostgreSQL: `docker compose up -d`
-2. Update `DATABASE_URL` in `apps/server/.env`
-3. Change `provider = "sqlite"` → `provider = "postgresql"` in `schema.prisma`
-4. Restore enum types and `String[]` arrays (reverse `migrateToSqlite.js` changes)
-5. Run `pnpm db:migrate`
+- Sensitive clinical fields can be encrypted at rest using AES-256-GCM via `phi-encryption.ts`.
 
 ---
 
 ## Troubleshooting
 
-| Problem | Solution |
-|---|---|
-| `prisma generate` fails | Run `pnpm install` first, then `cd apps/server && pnpm db:generate` |
-| CORS errors | Check `FRONTEND_URL` in server `.env`; verify Vite proxy in `vite.config.ts` |
-| AI endpoints return 500 | Ensure `GEMINI_API_KEY` is set in server `.env` |
-| WebSocket not connecting | Confirm Vite proxy for `/ws` is configured; check server logs |
-| SQLite enum errors | Run `node migrateToSqlite.js` from root to convert schema |
-| Port 3001 already in use | Kill the process or change `PORT` in server `.env` |
-| `@vox/shared-types` not found | Run `pnpm install` from root to link workspace packages |
-| Seed fails with unique constraint | Database already has seed data; delete `dev.db` and re-push schema |
+| Issue | Root Cause | Solution |
+|---|---|---|
+| **Permission denied (`sarvavaidya-keypair.pem`) on SSH** | Windows/WSL filesystem permissions are `0777` by default | Copy key to WSL home: `cp key.pem ~/.ssh/ && chmod 600 ~/.ssh/key.pem`, then SSH using that path. |
+| **Doctor / Patient pages confused or unauthorized access** | Accessing a URL belonging to a different role | Protected by `RoleGuard`. Ensure you log in with the correct Aadhaar number (`111111111111` for Doctor, `000000000000` for Nurse, `222222222222` for Patient). |
+| **Prisma schema out of sync on EC2** | RDS tables modified or reset | Run `cd /opt/sarvavaidya/apps/server && sudo -u app npx prisma db push --accept-data-loss`. |
+| **Frontend build runs out of memory on EC2 (`t3.micro`)** | Node.js default heap exceeds available memory | Run build with memory cap: `sudo -u app NODE_OPTIONS="--max-old-space-size=896" pnpm build`. |
+| **Nginx returns 502 Bad Gateway** | PM2 API process is stopped or crashed | Run `sudo -u app pm2 status` and `sudo -u app pm2 logs sarvavaidya-api` to inspect crash logs. Restart with `pm2 restart sarvavaidya-api`. |
+| **AI suggestions return 500 error** | Missing or invalid AI API key | Verify `GEMINI_API_KEY` or `GROK_API_KEY` in `apps/server/.env`. |
+| **Port 5435 already in use locally** | Another PostgreSQL instance running | Stop conflicting container with `docker stop <container>` or adjust port in `docker-compose.yml`. |
 
 ---
 
 ## Scripts Reference
 
-### Root (`/`)
+### Workspace Root (`/`)
 | Script | Command | Description |
 |---|---|---|
-| `dev` | `pnpm dev` | Start both server and web concurrently |
-| `dev:web` | `pnpm dev:web` | Start frontend only |
-| `dev:server` | `pnpm dev:server` | Start backend only |
-| `build` | `pnpm build` | Build frontend for production |
+| `pnpm dev` | `concurrently ...` | Runs both backend API and frontend dev server simultaneously |
+| `pnpm dev:web` | `pnpm --filter @vox/web dev` | Starts frontend Vite dev server only (port `5173`) |
+| `pnpm dev:server` | `pnpm --filter @vox/server dev` | Starts backend Express API only (port `3001`) |
+| `pnpm build` | `pnpm --filter @vox/web build` | Compiles TypeScript and builds production Vite bundle |
 
-### Server (`apps/server/`)
+### Backend (`apps/server/`)
 | Script | Command | Description |
 |---|---|---|
-| `dev` | `tsx watch src/index.ts` | Start server with hot reload |
-| `build` | `tsc` | TypeScript compilation |
-| `db:migrate` | `prisma migrate dev` | Create/apply database migration |
-| `db:generate` | `prisma generate` | Generate Prisma client |
-| `db:push` | `prisma db push` | Push schema without migration |
-| `db:seed` | `tsx src/seed.ts` | Seed demo data |
+| `pnpm dev` | `tsx watch src/index.ts` | Starts backend with automatic TypeScript watch & reload |
+| `pnpm build` | `tsc` | Compiles TypeScript to `dist/` |
+| `pnpm db:generate` | `prisma generate` | Generates typed Prisma Client |
+| `pnpm db:push` | `prisma db push` | Pushes Prisma schema directly to PostgreSQL |
+| `pnpm db:seed` | `tsx src/seed.ts` | Seeds database with demo doctors, nurses, and patients |
+| `pnpm db:migrate` | `prisma migrate dev` | Creates and runs Prisma database migrations |
 
-### Web (`apps/web/`)
+### Frontend (`apps/web/`)
 | Script | Command | Description |
 |---|---|---|
-| `dev` | `vite` | Start Vite dev server (port 5173) |
-| `build` | `tsc -b && vite build` | Type-check + production build |
-| `preview` | `vite preview` | Preview production build |
+| `pnpm dev` | `vite` | Starts local Vite dev server with HMR |
+| `pnpm build` | `tsc -b && vite build` | Type-checks and creates production build in `dist/` |
+| `pnpm preview` | `vite preview` | Previews production build locally |
 
 ---
 
 ## License
 
-*No license specified. Add a `LICENSE` file to define usage terms.*
-]]>
+This project is licensed under the MIT License.
