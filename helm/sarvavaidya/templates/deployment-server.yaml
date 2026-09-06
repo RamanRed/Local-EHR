@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "sarvavaidya.fullname" . }}-server
+  labels:
+    {{- include "sarvavaidya.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  replicas: {{ .Values.server.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "sarvavaidya.fullname" . }}-server
+  template:
+    metadata:
+      labels:
+        app: {{ include "sarvavaidya.fullname" . }}-server
+    spec:
+      containers:
+        - name: server
+          image: "{{ .Values.server.image.repository }}:{{ .Values.server.image.tag }}"
+          imagePullPolicy: {{ .Values.server.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.server.service.port }}
+              name: http
+          resources:
+            {{- toYaml .Values.server.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: {{ .Values.server.service.port }}
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: {{ .Values.server.service.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 10

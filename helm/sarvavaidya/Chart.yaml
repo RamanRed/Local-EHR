@@ -1,0 +1,14 @@
+apiVersion: v2
+name: sarvavaidya
+description: A Production Helm chart for SarvaVaidya AI-Powered EHR System
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - ehr
+  - healthcare
+  - ai
+  - telemedicine
+maintainers:
+  - name: SarvaVaidya DevOps Team
+    email: devops@sarvavaidya.local

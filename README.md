@@ -2,11 +2,13 @@
 
 > **SarvaVaidya** (meaning *"Universal Healer"*) is an enterprise-grade, full-stack Electronic Health Record (EHR) system tailored for clinics, remote health centers, and modern medical practices. It integrates role-isolated workflows for **Doctors**, **Nurses**, and **Patients**, real-time video consultations, multi-LLM clinical decision support (Google Gemini & xAI Grok), Pinecone vector similarity search, FHIR R4 standard compliance, and autonomous AI-powered patient follow-up calls.
 
+[![CI Pipeline](https://github.com/RamanRed/Local-EHR/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/RamanRed/Local-EHR/actions/workflows/ci.yml)
 [![Deployment: Live on AWS EC2](https://img.shields.io/badge/Deployment-AWS%20EC2%20(Live)-orange?logo=amazon-aws)](http://15.206.15.61)
 [![Runtime: Node.js & React 19](https://img.shields.io/badge/Stack-Node%20%7C%20React%2019%20%7C%20Vite-blue?logo=react)](https://react.dev)
 [![Database: PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL%2016-blue?logo=postgresql)](https://www.postgresql.org)
 [![ORM: Prisma](https://img.shields.io/badge/ORM-Prisma%206-black?logo=prisma)](https://www.prisma.io)
 [![IaC: Terraform & Ansible](https://img.shields.io/badge/DevOps-Terraform%20%2B%20Ansible-purple?logo=terraform)](https://www.terraform.io)
+[![Viva Guide](https://img.shields.io/badge/Documentation-Faculty%20Viva%20Guide-success?logo=gitbook)](FACULTY_VIVA_GUIDE.md)
 
 ---
 
