@@ -9,9 +9,10 @@ name: CI — Type Check, Lint & Build
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, master, develop]
   pull_request:
-    branches: [main, develop]
+    branches: [main, master, develop]
+  workflow_dispatch:
 
 env:
   PNPM_VERSION: "10"

@@ -17,7 +17,7 @@ name: CD — Deploy to AWS
 
 on:
   push:
-    branches: [main]
+    branches: [main, master]
   workflow_dispatch:
     inputs:
       environment:
@@ -194,7 +194,7 @@ jobs:
             -i ansible/inventory/hosts.yml \
             -e "env=${{ env.ENVIRONMENT }}" \
             -e "repo_url=${{ secrets.REPO_URL }}" \
-            -e "deploy_branch=main"
+            -e "deploy_branch=${{ github.ref_name }}"
         env:
           ENVIRONMENT: ${{ env.ENVIRONMENT }}
 
@@ -205,6 +205,6 @@ jobs:
           echo "|---|---|" >> $GITHUB_STEP_SUMMARY
           echo "| Environment | ${{ env.ENVIRONMENT }} |" >> $GITHUB_STEP_SUMMARY
           echo "| EC2 Host | ${{ needs.terraform-apply.outputs.ec2_host }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Branch | main |" >> $GITHUB_STEP_SUMMARY
+          echo "| Branch | ${{ github.ref_name }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Commit | ${{ github.sha }} |" >> $GITHUB_STEP_SUMMARY
           echo "| App URL | http://${{ needs.terraform-apply.outputs.ec2_host }} |" >> $GITHUB_STEP_SUMMARY
