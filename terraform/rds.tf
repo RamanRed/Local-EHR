@@ -27,8 +27,8 @@ resource "aws_db_instance" "main" {
   instance_class = var.db_instance_class
 
   allocated_storage     = var.db_allocated_storage
-  storage_type           = "gp2"    # free-tier storage type (gp3 is not covered)
-  max_allocated_storage  = 0        # disable storage autoscaling to avoid surprise growth
+  storage_type          = "gp2" # free-tier storage type (gp3 is not covered)
+  max_allocated_storage = 0     # disable storage autoscaling to avoid surprise growth
 
   db_name  = var.db_name
   username = var.db_username
@@ -39,10 +39,10 @@ resource "aws_db_instance" "main" {
   vpc_security_group_ids = [aws_security_group.rds.id]
   publicly_accessible    = false
 
-  multi_az                   = false   # Multi-AZ is NOT free-tier eligible
-  backup_retention_period    = var.db_backup_retention_days
-  backup_window               = "02:00-03:00"       # UTC — off-peak for IST
-  maintenance_window           = "sun:04:00-sun:05:00"
+  multi_az                = false # Multi-AZ is NOT free-tier eligible
+  backup_retention_period = var.db_backup_retention_days
+  backup_window           = "02:00-03:00" # UTC — off-peak for IST
+  maintenance_window      = "sun:04:00-sun:05:00"
 
   skip_final_snapshot       = var.environment != "prod"
   final_snapshot_identifier = var.environment == "prod" ? "${var.project_name}-final-snapshot" : null

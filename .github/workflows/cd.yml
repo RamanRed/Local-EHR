@@ -16,8 +16,6 @@
 name: CD — Deploy to AWS
 
 on:
-  push:
-    branches: [main, master]
   workflow_dispatch:
     inputs:
       environment:

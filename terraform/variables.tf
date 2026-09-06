@@ -66,7 +66,7 @@ variable "ami_id" {
   type        = string
   # Amazon Linux 2023 (AL2023) in ap-south-1 — fetched via:
   # aws ssm get-parameter --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64 --region ap-south-1
-  default     = "ami-090d68841c2a28756"
+  default = "ami-090d68841c2a28756"
 }
 
 variable "key_pair_name" {
@@ -78,7 +78,7 @@ variable "key_pair_name" {
 variable "allowed_ssh_cidr" {
   description = "CIDR allowed to SSH into the EC2 instance (restrict to your IP)"
   type        = string
-  default     = "0.0.0.0/0"   # Change to your IP for production!
+  default     = "0.0.0.0/0" # Change to your IP for production!
 }
 
 # ── RDS Aurora PostgreSQL ─────────────────────────────────────────────────────

@@ -70,8 +70,9 @@ export async function buildPatientContext(
     if (vitalParts.length > 0) {
       parts.push(`- Last Vitals: ${vitalParts.join(", ")}`);
     }
-    if (v.symptoms.length > 0) {
-      parts.push(`- Reported Symptoms: ${v.symptoms.join(", ")}`);
+    if (v.symptoms) {
+      const sympStr = Array.isArray(v.symptoms) ? v.symptoms.join(", ") : v.symptoms;
+      parts.push(`- Reported Symptoms: ${sympStr}`);
     }
   }
 

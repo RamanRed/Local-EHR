@@ -5,7 +5,9 @@
     "rootDir": "./src",
     "types": [
       "node"
-    ]
+    ],
+    "noImplicitAny": false,
+    "strictNullChecks": false
   },
   "include": [
     "src"

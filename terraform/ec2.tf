@@ -66,7 +66,7 @@ resource "aws_instance" "app_server" {
 
   root_block_device {
     volume_type           = "gp3"
-    volume_size           = 20    # GB — AWS free tier covers up to 30GB EBS
+    volume_size           = 20 # GB — AWS free tier covers up to 30GB EBS
     delete_on_termination = true
     encrypted             = true
   }
