@@ -3,12 +3,27 @@ import crypto from "crypto";
 
 const prisma = new PrismaClient();
 
+// Base URL for video room links — override with APP_URL env var in production
+const APP_URL = process.env.APP_URL?.replace(/\/$/, "") || "http://15.206.15.61";
+
 async function main() {
-  // ── Users ──
-  const doctor = await prisma.user.upsert({
-    where: { aadhaarNumber: "111111111111" },
-    update: {},
-    create: {
+  console.log("🗑️  Clearing existing data...");
+
+  // Delete in reverse dependency order to respect foreign keys
+  await prisma.auditLog.deleteMany({});
+  await prisma.followUpCall.deleteMany({});
+  await prisma.followUp.deleteMany({});
+  await prisma.consultation.deleteMany({});
+  await prisma.appointment.deleteMany({});
+  await prisma.vitals.deleteMany({});
+  await prisma.patient.deleteMany({});
+  await prisma.user.deleteMany({});
+
+  console.log("✅ Cleared. Seeding fresh data...\n");
+
+  // ── Users ──────────────────────────────────────────────────────────────────
+  const doctor = await prisma.user.create({
+    data: {
       name: "Dr. Arun Sharma",
       role: "DOCTOR",
       aadhaarNumber: "111111111111",
@@ -16,20 +31,16 @@ async function main() {
     },
   });
 
-  const nurse = await prisma.user.upsert({
-    where: { aadhaarNumber: "000000000000" },
-    update: {},
-    create: {
+  const nurse = await prisma.user.create({
+    data: {
       name: "Nurse Priya Patel",
       role: "NURSE",
       aadhaarNumber: "000000000000",
     },
   });
 
-  const patientUser = await prisma.user.upsert({
-    where: { aadhaarNumber: "222222222222" },
-    update: {},
-    create: {
+  const patientUser1 = await prisma.user.create({
+    data: {
       name: "Rahul Mehta",
       role: "PATIENT",
       aadhaarNumber: "222222222222",
@@ -40,10 +51,8 @@ async function main() {
     },
   });
 
-  const patientUser2 = await prisma.user.upsert({
-    where: { aadhaarNumber: "333333333333" },
-    update: {},
-    create: {
+  const patientUser2 = await prisma.user.create({
+    data: {
       name: "Sneha Iyer",
       role: "PATIENT",
       aadhaarNumber: "333333333333",
@@ -54,17 +63,15 @@ async function main() {
     },
   });
 
-  console.log("Seeded users:");
-  console.log(`  Doctor:  ${doctor.name} (${doctor.aadhaarNumber})`);
-  console.log(`  Nurse:   ${nurse.name} (${nurse.aadhaarNumber})`);
-  console.log(`  Patient: ${patientUser.name} (${patientUser.aadhaarNumber})`);
-  console.log(`  Patient: ${patientUser2.name} (${patientUser2.aadhaarNumber})`);
+  console.log("👤 Users seeded:");
+  console.log(`   Doctor  → ${doctor.name}      (${doctor.aadhaarNumber})`);
+  console.log(`   Nurse   → ${nurse.name}  (${nurse.aadhaarNumber})`);
+  console.log(`   Patient → ${patientUser1.name}       (${patientUser1.aadhaarNumber})`);
+  console.log(`   Patient → ${patientUser2.name}        (${patientUser2.aadhaarNumber})`);
 
-  // ── Patients ──
-  const patient1 = await prisma.patient.upsert({
-    where: { aadhaarNumber: "222222222222" },
-    update: {},
-    create: {
+  // ── Patients ───────────────────────────────────────────────────────────────
+  const patient1 = await prisma.patient.create({
+    data: {
       name: "Rahul Mehta",
       aadhaarNumber: "222222222222",
       gender: "Male",
@@ -76,10 +83,8 @@ async function main() {
     },
   });
 
-  const patient2 = await prisma.patient.upsert({
-    where: { aadhaarNumber: "333333333333" },
-    update: {},
-    create: {
+  const patient2 = await prisma.patient.create({
+    data: {
       name: "Sneha Iyer",
       aadhaarNumber: "333333333333",
       gender: "Female",
@@ -91,15 +96,13 @@ async function main() {
     },
   });
 
-  console.log("Seeded patients:");
-  console.log(`  ${patient1.name} (${patient1.id})`);
-  console.log(`  ${patient2.name} (${patient2.id})`);
+  console.log("\n🏥 Patients seeded:");
+  console.log(`   ${patient1.name} (id: ${patient1.id})`);
+  console.log(`   ${patient2.name} (id: ${patient2.id})`);
 
-  // ── Vitals ──
-  await prisma.vitals.upsert({
-    where: { patientId: patient1.id },
-    update: {},
-    create: {
+  // ── Vitals ─────────────────────────────────────────────────────────────────
+  await prisma.vitals.create({
+    data: {
       patientId: patient1.id,
       bloodPressure: "120/80",
       heartRate: 76,
@@ -112,10 +115,8 @@ async function main() {
     },
   });
 
-  await prisma.vitals.upsert({
-    where: { patientId: patient2.id },
-    update: {},
-    create: {
+  await prisma.vitals.create({
+    data: {
       patientId: patient2.id,
       bloodPressure: "110/70",
       heartRate: 68,
@@ -127,16 +128,17 @@ async function main() {
     },
   });
 
-  console.log("Seeded vitals for both patients");
+  console.log("\n💉 Vitals seeded for both patients");
 
-  // ── Appointments ──
+  // ── Appointments ───────────────────────────────────────────────────────────
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
 
-  const videoRoomId = crypto.randomUUID();
+  const videoRoomId1 = crypto.randomUUID();
+  const videoRoomId2 = crypto.randomUUID();
 
   const appt1 = await prisma.appointment.create({
     data: {
@@ -150,14 +152,16 @@ async function main() {
       timeSlot: "10:00 AM - 10:30 AM",
       mobile: "9876543210",
       status: "confirmed",
-      roomId: videoRoomId,
-      videoLink: `http://localhost:5173/video-room/${videoRoomId}`,
+      roomId: videoRoomId1,
+      videoLink: `${APP_URL}/video-room/${videoRoomId1}`,
     },
   });
 
   const appt2 = await prisma.appointment.create({
     data: {
       patientId: patient2.id,
+      doctorId: doctor.id,
+      doctorName: doctor.name,
       type: "videoConsultation",
       reason: "RoutineCheckUp",
       symptoms: "Cough and sore throat",
@@ -165,14 +169,16 @@ async function main() {
       timeSlot: "11:00 AM - 11:30 AM",
       mobile: "9123456780",
       status: "pending",
-      roomId: crypto.randomUUID(),
-      videoLink: `http://localhost:5173/video-room/${crypto.randomUUID()}`,
+      roomId: videoRoomId2,
+      videoLink: `${APP_URL}/video-room/${videoRoomId2}`,
     },
   });
 
   const appt3 = await prisma.appointment.create({
     data: {
       patientId: patient1.id,
+      doctorId: doctor.id,
+      doctorName: doctor.name,
       type: "inClinic",
       reason: "FollowUp",
       preferredDate: tomorrow,
@@ -194,16 +200,23 @@ async function main() {
     },
   });
 
-  console.log("Seeded appointments:");
-  console.log(`  ${appt1.id} -Video (confirmed, today) -${patient1.name}`);
-  console.log(`  ${appt2.id} -Video (pending, today)   -${patient2.name}`);
-  console.log(`  ${appt3.id} -In-clinic (tomorrow)     -${patient1.name}`);
-  console.log(`  ${appt4.id} -Follow-up call (tomorrow) -${patient2.name}`);
+  console.log("\n📅 Appointments seeded:");
+  console.log(`   ${appt1.id} — Video confirmed  today     — ${patient1.name}`);
+  console.log(`   ${appt2.id} — Video pending    today     — ${patient2.name}`);
+  console.log(`   ${appt3.id} — In-clinic        tomorrow  — ${patient1.name}`);
+  console.log(`   ${appt4.id} — Follow-up call   tomorrow  — ${patient2.name}`);
 
-  console.log("\nDone! Use these Aadhaar numbers to log in:");
-  console.log("  Doctor:  111111111111");
-  console.log("  Nurse:   000000000000");
-  console.log("  Patient: 222222222222 or 333333333333");
+  console.log(`
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ Seed complete! Login at ${APP_URL}/signin
+
+   Role     Aadhaar        OTP
+   ──────── ────────────── ──────
+   Doctor   111111111111   123456
+   Nurse    000000000000   123456
+   Patient  222222222222   123456
+   Patient  333333333333   123456
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
 }
 
 main()
