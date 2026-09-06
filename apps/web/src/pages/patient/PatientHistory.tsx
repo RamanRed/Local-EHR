@@ -1,5 +1,6 @@
 import { usePatientHistory } from "@/hooks/usePatientHistory";
 import type { IcdCode } from "@vox/shared-types";
+import { ConsultDetailDialog } from "@/components/patient/ConsultDetailDialog";
 
 export default function PatientHistory() {
   const { consults, loading, error } = usePatientHistory();
@@ -23,9 +24,9 @@ export default function PatientHistory() {
           {consults.map((c) => {
             const icdCodes = (c.icdCodes as IcdCode[] | null) || [];
             return (
+              <ConsultDetailDialog key={c.id} consult={c}>
               <div
-                key={c.id}
-                className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm"
+                className="cursor-pointer rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md"
               >
                 <div className="mb-3 flex items-center justify-between">
                   <p className="text-sm text-muted-foreground">
@@ -62,6 +63,7 @@ export default function PatientHistory() {
                   </p>
                 )}
               </div>
+              </ConsultDetailDialog>
             );
           })}
         </div>

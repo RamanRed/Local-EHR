@@ -2,6 +2,7 @@ import type { Consult } from "@vox/shared-types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CalendarDays, Stethoscope } from "lucide-react";
+import { ConsultDetailDialog } from "@/components/patient/ConsultDetailDialog";
 
 interface ConsultSummaryCardProps {
   consult: Consult;
@@ -17,7 +18,8 @@ function formatDate(iso: string): string {
 
 export function ConsultSummaryCard({ consult }: ConsultSummaryCardProps) {
   return (
-    <Card>
+    <ConsultDetailDialog consult={consult}>
+    <Card className="cursor-pointer transition-shadow hover:shadow-md">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base">
@@ -59,5 +61,6 @@ export function ConsultSummaryCard({ consult }: ConsultSummaryCardProps) {
         )}
       </CardContent>
     </Card>
+    </ConsultDetailDialog>
   );
 }
