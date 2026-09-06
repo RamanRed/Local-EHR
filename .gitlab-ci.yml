@@ -1,0 +1,67 @@
+# .gitlab-ci.yml — SarvaVaidya EHR GitLab CI Pipeline
+image: node:20-alpine
+
+stages:
+  - lint
+  - test
+  - build
+  - security
+  - deploy
+
+variables:
+  PNPM_HOME: "/root/.local/share/pnpm"
+  PATH: "$PNPM_HOME:$PATH"
+
+before_script:
+  - corepack enable
+  - corepack prepare pnpm@10 --activate
+  - pnpm install --frozen-lockfile
+
+# ── Stage 1: Static Analysis & Lint ──────────────────────────────────────────
+typecheck:
+  stage: lint
+  script:
+    - pnpm --filter @vox/shared-types tsc --noEmit
+    - pnpm --filter @vox/server tsc --noEmit
+    - pnpm --filter @vox/web tsc --noEmit
+
+# ── Stage 2: Automated Unit Testing ──────────────────────────────────────────
+unit-tests:
+  stage: test
+  script:
+    - pnpm test
+
+# ── Stage 3: Build ────────────────────────────────────────────────────────────
+build-frontend:
+  stage: build
+  script:
+    - NODE_OPTIONS="--max-old-space-size=896" pnpm build
+  artifacts:
+    paths:
+      - apps/web/dist/
+    expire_in: 3 days
+
+build-server:
+  stage: build
+  script:
+    - pnpm --filter @vox/server build
+
+# ── Stage 4: DevSecOps Vulnerability Scan ─────────────────────────────────────
+security-audit:
+  stage: security
+  script:
+    - pnpm audit --audit-level=high || true
+  allow_failure: true
+
+# ── Stage 5: Deploy to AWS EC2 ────────────────────────────────────────────────
+deploy-production:
+  stage: deploy
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache openssh-client ansible
+  script:
+    - echo "Deploying to production EC2..."
+    - ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/deploy.yml
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      when: manual

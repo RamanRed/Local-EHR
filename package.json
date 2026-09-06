@@ -10,7 +10,8 @@
     "dev": "concurrently --kill-others -n server,web -c blue,green \"pnpm run dev:server\" \"pnpm run dev:web\"",
     "dev:web": "pnpm --filter @vox/web dev",
     "dev:server": "pnpm --filter @vox/server dev",
-    "build": "pnpm --filter @vox/web build"
+    "build": "pnpm --filter @vox/web build",
+    "test": "pnpm --filter @vox/server test"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

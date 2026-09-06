@@ -17,7 +17,6 @@ terraform/.terraform/
 bun.lockb
 bunfig.toml
 
-docs
 .agents
 skills-lock.json
 skills

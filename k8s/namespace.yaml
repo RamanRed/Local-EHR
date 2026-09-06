@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sarvavaidya
+  labels:
+    name: sarvavaidya
+    app.kubernetes.io/part-of: sarvavaidya-ehr

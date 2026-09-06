@@ -13,6 +13,7 @@ import appointmentRoutes from "./routes/appointment.routes.js";
 import suggestRoutes from "./routes/suggest.routes.js";
 import followupRoutes from "./routes/followup.routes.js";
 import followUpCallRoutes from "./routes/followup-call.routes.js";
+import metricsRoutes, { metricsCollector } from "./routes/metrics.routes.js";
 import { attachFollowUpCallWebSocket } from "./routes/followup-call.ws.js";
 import { startFollowUpScheduler, stopFollowUpScheduler } from "./services/followup-scheduler.js";
 import { authMiddleware, requireRole } from "./middleware/auth.middleware.js";
@@ -26,6 +27,7 @@ app.use(cors({
 }));
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
+app.use(metricsCollector);
 
 // Swagger docs
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
@@ -42,6 +44,7 @@ app.use("/api/fhir", fhirRoutes);
 app.use("/api/appointments", authMiddleware, appointmentRoutes);
 app.use("/api/follow-ups", authMiddleware, followupRoutes);
 app.use("/api/followup-calls", authMiddleware, followUpCallRoutes);
+app.use("/api/metrics", metricsRoutes);
 
 // Health check
 app.get("/api/health", (_req, res) => {
