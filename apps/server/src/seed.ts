@@ -9,15 +9,22 @@ const APP_URL = process.env.APP_URL?.replace(/\/$/, "") || "http://15.206.15.61"
 async function main() {
   console.log("🗑️  Clearing existing data...");
 
-  // Delete in reverse dependency order to respect foreign keys
-  await prisma.auditLog.deleteMany({});
-  await prisma.followUpCall.deleteMany({});
-  await prisma.followUp.deleteMany({});
-  await prisma.consultation.deleteMany({});
-  await prisma.appointment.deleteMany({});
-  await prisma.vitals.deleteMany({});
-  await prisma.patient.deleteMany({});
-  await prisma.user.deleteMany({});
+  // TRUNCATE CASCADE handles all FK dependencies in one shot —
+  // safer than manually ordering deleteMany calls
+  await prisma.$executeRawUnsafe(`
+    TRUNCATE TABLE
+      "AuditLog",
+      "FollowUpCall",
+      "FollowUp",
+      "Consult",
+      "Medication",
+      "Condition",
+      "Appointment",
+      "Vitals",
+      "Patient",
+      "User"
+    RESTART IDENTITY CASCADE
+  `);
 
   console.log("✅ Cleared. Seeding fresh data...\n");
 
@@ -64,10 +71,10 @@ async function main() {
   });
 
   console.log("👤 Users seeded:");
-  console.log(`   Doctor  → ${doctor.name}      (${doctor.aadhaarNumber})`);
-  console.log(`   Nurse   → ${nurse.name}  (${nurse.aadhaarNumber})`);
-  console.log(`   Patient → ${patientUser1.name}       (${patientUser1.aadhaarNumber})`);
-  console.log(`   Patient → ${patientUser2.name}        (${patientUser2.aadhaarNumber})`);
+  console.log(`   Doctor  → ${doctor.name} (${doctor.aadhaarNumber})`);
+  console.log(`   Nurse   → ${nurse.name} (${nurse.aadhaarNumber})`);
+  console.log(`   Patient → ${patientUser1.name} (${patientUser1.aadhaarNumber})`);
+  console.log(`   Patient → ${patientUser2.name} (${patientUser2.aadhaarNumber})`);
 
   // ── Patients ───────────────────────────────────────────────────────────────
   const patient1 = await prisma.patient.create({
@@ -201,10 +208,10 @@ async function main() {
   });
 
   console.log("\n📅 Appointments seeded:");
-  console.log(`   ${appt1.id} — Video confirmed  today     — ${patient1.name}`);
-  console.log(`   ${appt2.id} — Video pending    today     — ${patient2.name}`);
-  console.log(`   ${appt3.id} — In-clinic        tomorrow  — ${patient1.name}`);
-  console.log(`   ${appt4.id} — Follow-up call   tomorrow  — ${patient2.name}`);
+  console.log(`   ${appt1.id} — Video confirmed  today    — ${patient1.name}`);
+  console.log(`   ${appt2.id} — Video pending    today    — ${patient2.name}`);
+  console.log(`   ${appt3.id} — In-clinic        tomorrow — ${patient1.name}`);
+  console.log(`   ${appt4.id} — Follow-up call   tomorrow — ${patient2.name}`);
 
   console.log(`
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
