@@ -5,6 +5,8 @@ import { writeFile, unlink } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { randomUUID } from "crypto";
+import { openaiChatJson, openaiChatText } from "../utils/openai-helpers.js";
+import { queryICD10 } from "../services/external-api-search.js";
 
 const router: Router = Router();
 
@@ -45,6 +47,28 @@ function matchIcdCodes(symptoms: string[]): { code: string; description: string 
   return Array.from(matched.values());
 }
 
+// Broader, non-hardcoded ICD-10 lookup against the NIH clinical tables API
+// (thousands of real codes vs. the ~18-term static map above). Used as part
+// of the last-resort fallback so "no LLM available" doesn't mean "stuck with
+// 18 keywords" -- falls back to the static map only if the network call
+// itself fails (e.g. no internet egress).
+async function dynamicIcdLookup(symptoms: string[]): Promise<{ code: string; description: string }[]> {
+  if (!symptoms.length) return [];
+  try {
+    const hits = await queryICD10(symptoms);
+    const seen = new Map<string, { code: string; description: string }>();
+    for (const h of hits) {
+      if (h.icd_10_code && !seen.has(h.icd_10_code)) {
+        seen.set(h.icd_10_code, { code: h.icd_10_code, description: h.disease_name ?? "" });
+      }
+    }
+    if (seen.size) return Array.from(seen.values());
+  } catch (err) {
+    console.warn("[analyze] Live ICD-10 lookup failed, using static map:", err);
+  }
+  return matchIcdCodes(symptoms);
+}
+
 function normalizeSymptomsInput(symptoms: unknown): string[] {
   if (Array.isArray(symptoms)) {
     return symptoms
@@ -82,7 +106,7 @@ function normalizeOptionalText(value: unknown): string | undefined {
   return cleaned || undefined;
 }
 
-function buildFallbackResponse(
+async function buildFallbackResponse(
   transcript: string | undefined,
   symptoms: string[] | undefined,
   vitals: Record<string, unknown> | undefined,
@@ -97,7 +121,7 @@ function buildFallbackResponse(
     }
   }
 
-  const icdSuggestions = matchIcdCodes(allSymptoms);
+  const icdSuggestions = await dynamicIcdLookup(allSymptoms);
 
   const subjective = transcript
     ? `Patient reports: ${allSymptoms.join(", ") || "symptoms as described"}. ${transcript}`
@@ -312,13 +336,19 @@ Requirements:
 - Suggest 2-5 relevant ICD-10-CM codes
 - Return ONLY the JSON object, no other text`;
 
-    // ── Try Ollama first (always preferred — local, free) ─────────────────────
+    // ── Try Groq first (via shared openai-helpers -- falls back to Ollama internally
+    // if GROK_API_KEY isn't set, so this one call covers both) ───────────────────
     try {
-      const raw = await ollamaGenerate(prompt);
-      const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-      const parsed = JSON.parse(cleaned);
+      const parsed = await openaiChatJson(
+        [
+          { role: "system", content: "You are a medical AI assistant. Respond ONLY with valid JSON, no markdown, no commentary." },
+          { role: "user", content: prompt },
+        ],
+        0.2,
+        2048,
+      );
 
-      if (!parsed.soap || !parsed.soap.subjective) throw new Error("Invalid shape from Ollama");
+      if (!parsed.soap || !parsed.soap.subjective) throw new Error("Invalid shape from Groq/Ollama");
 
       if (!parsed.icdSuggestions || parsed.icdSuggestions.length === 0) {
         const allSymptoms: string[] = [...normalizedSymptoms];
@@ -330,7 +360,7 @@ Requirements:
             }
           }
         }
-        parsed.icdSuggestions = matchIcdCodes(allSymptoms);
+        parsed.icdSuggestions = await dynamicIcdLookup(allSymptoms);
       }
 
       res.json({
@@ -339,8 +369,8 @@ Requirements:
         icdSuggestions:  parsed.icdSuggestions,
       });
       return;
-    } catch (ollamaErr) {
-      console.warn("[analyze] Ollama failed, trying Gemini:", ollamaErr);
+    } catch (groqErr) {
+      console.warn("[analyze] Groq/Ollama failed, trying Gemini:", groqErr);
     }
 
     // ── Gemini fallback ────────────────────────────────────────────────────────
@@ -381,7 +411,7 @@ Requirements:
               }
             }
           }
-          parsed.icdSuggestions = matchIcdCodes(allSymptoms);
+          parsed.icdSuggestions = await dynamicIcdLookup(allSymptoms);
         }
 
         res.json({
@@ -396,7 +426,7 @@ Requirements:
     }
 
     // ── Keyword fallback ───────────────────────────────────────────────────────
-    res.json(buildFallbackResponse(transcriptText, normalizedSymptoms, safeVitals));
+    res.json(await buildFallbackResponse(transcriptText, normalizedSymptoms, safeVitals));
   } catch (error) {
     console.error("[analyze] Unhandled error:", error);
     res.status(500).json({ message: "Internal server error" });
@@ -442,13 +472,20 @@ Respond with ONLY the summary text, no JSON, no markdown headers, no labels.`;
 
     // ── Try Ollama first ───────────────────────────────────────────────────────
     try {
-      const summary = await ollamaGenerate(prompt);
+      const summary = await openaiChatText(
+        [
+          { role: "system", content: "You are a medical assistant. Respond with only the summary text, no JSON, no markdown headers, no labels." },
+          { role: "user", content: prompt },
+        ],
+        0.3,
+        1024,
+      );
       if (summary) {
         res.json({ summary });
         return;
       }
-    } catch (ollamaErr) {
-      console.warn("[summarize] Ollama failed, trying Gemini:", ollamaErr);
+    } catch (groqErr) {
+      console.warn("[summarize] Groq/Ollama failed, trying Gemini:", groqErr);
     }
 
     // ── Gemini fallback ────────────────────────────────────────────────────────

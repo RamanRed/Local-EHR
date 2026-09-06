@@ -7,6 +7,9 @@
 
 // Chat model: Ollama tag, e.g. "mistral:latest", "llama3", "llama3.1", "phi3"
 export const CHAT_MODEL       = process.env.OLLAMA_MODEL           || "mistral:latest";
+// Groq model used when GROK_API_KEY is set (openai-helpers.ts prioritises Groq).
+// gpt-oss-120b supports tool/function calling on Groq's API.
+export const GROQ_FUNCTION_CALL_MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
 // Embedding model: must match your Pinecone index dimension
 // mxbai-embed-large → 1024 dims | nomic-embed-text → 768 | all-minilm → 384
 export const EMBEDDING_MODEL  = process.env.OLLAMA_EMBEDDING_MODEL || "mxbai-embed-large";

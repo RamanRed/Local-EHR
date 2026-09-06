@@ -182,6 +182,8 @@ async function queryICD10(symptoms: string[]): Promise<Record<string, any>[]> {
   return results;
 }
 
+export { queryICD10 };
+
 // ─── Steps 4-6 Orchestrator ─────────────────────────────────────────────────
 
 export async function runExternalSearchStoreAndRefetch(
